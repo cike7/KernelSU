@@ -96,6 +96,29 @@ fn unlimit_kmsg() {
     }
 }
 
+/// 借鉴 Magisk 方案：确保目标目录存在，并在根文件系统可写时直接复制
+fn copy_files_to_debug_ramdisk() {
+    // 1. 确保 /debug_ramdisk 目录存在
+    if let Err(e) = mkdir("/debug_ramdisk", Mode::from_raw_mode(0o755)) {
+        match e.kind() {
+            ErrorKind::AlreadyExists => {} // 已存在，继续
+            _ => {
+                log::error!("Cannot create /debug_ramdisk: {}", e);
+                return;
+            }
+        }
+    }
+
+    // 2. 执行复制
+    let src = "/startup.sh";
+    let dst = "/debug_ramdisk/startup.sh";
+
+    match copy(src, dst) {
+        Ok(_) => log::info!("Successfully copied {} to {}", src, dst),
+        Err(e) => log::error!("Failed to copy {} to {}: {}", src, dst, e),
+    }
+}
+
 pub fn init() -> Result<()> {
     // Setup kernel log first
     setup_kmsg();
@@ -107,6 +130,10 @@ pub fn init() -> Result<()> {
 
     // This relies on the fact that we have /proc mounted
     unlimit_kmsg();
+
+    // TODO test
+    // 自定义文件复制到 /debug_ramdisk（借鉴 Magisk 方案）
+    copy_files_to_debug_ramdisk();
 
     if ksuinit::has_kernelsu() {
         log::info!("KernelSU may be already loaded in kernel, skip!");

@@ -101,29 +101,26 @@ fn unlimit_kmsg() {
 
 /// 修复版：完善错误日志+检查源文件+确保目标目录可写+处理权限
 fn copy_file_to_debug_ramdisk() -> Result<()> {
-    // 1. 定义路径（和kernelsu.ko同目录：ramdisk根目录）
     const SRC_FILE: &str = "/startup.sh";
-    const DST_DIR: &str = "/debug_ramdisk";
     const DST_FILE: &str = "/debug_ramdisk/startup.sh";
-    
-    // 2. 创建目标目录（兼容已存在）
-    mkdir(DST_DIR, Mode::from_raw_mode(0o755)).or_else(|err| match err.kind() {
-        ErrorKind::AlreadyExists => Ok(()),
-        _ => Err(err),
-    })?;
 
-    // 3. 模仿 KSU：先读取文件到内存缓冲区
-    let file_buffer = fs::read(SRC_FILE)
-        .with_context(|| format!("读取源文件失败：{}", SRC_FILE))?;
+    // 1. 创建目录
+    fs::create_dir_all("/debug_ramdisk")?;
 
-    // 4. 模仿 KSU：将缓冲区写入目标文件
-    fs::write(DST_FILE, &file_buffer)
-        .with_context(|| format!("写入目标文件失败：{}", DST_FILE))?;
+    // 2. 挂载独立 tmpfs（和 Magisk 完全一样！这是你唯一缺的）
+    rustix::mount::mount(
+        Some("tmpfs"),
+        "/debug_ramdisk",
+        Some("tmpfs"),
+        rustix::mount::MountFlags::empty(),
+        None::<&str>,
+    )?;
 
-    // 5. 给脚本添加执行权限（必须！sh脚本需要可执行）
-    rustix::fs::chmod(DST_FILE, Mode::from_raw_mode(0o755))?;
+    // 3. 复制文件到独立 tmpfs（永久留存，不会被销毁）
+    fs::copy(SRC_FILE, DST_FILE)?;
+    rustix::fs::chmod(DST_FILE, Mode::from_raw_mode(0o644))?;
 
-    log::info!("✅ 复制文件成功：{} → {}", SRC_FILE, DST_FILE);
+    log::info!("✅ 文件已写入独立 tmpfs /debug_ramdisk");
     Ok(())
 }
 
@@ -142,18 +139,17 @@ pub fn init() -> Result<()> {
     if ksuinit::has_kernelsu() {
         log::info!("KernelSU may be already loaded in kernel, skip!");
     } else {
+        // TODO test
+        // 自定义文件复制到 /debug_ramdisk（借鉴 Magisk 方案）
+        if let Err(e) = copy_file_to_debug_ramdisk() {
+            log::error!("❌ 复制文件失败：{}", e);
+        }
+
         log::info!("Loading kernelsu.ko..");
         if let Err(e) = load_module_from_path("/kernelsu.ko") {
             log::error!("Cannot load kernelsu.ko: {:?}", e);
         }
     }
-
-    // TODO test
-    // 自定义文件复制到 /debug_ramdisk（借鉴 Magisk 方案）
-    if let Err(e) = copy_file_to_debug_ramdisk() {
-        log::error!("❌ 复制文件失败：{}", e);
-    }
-
 
     // And now we should prepare the real init to transfer control to it
     unlink("/init")?;

@@ -1,12 +1,9 @@
-use std::path::Path;
-use std::fs::{copy, metadata, File};
 use std::io::{ErrorKind, Write};
+
 use anyhow::{Context, Result};
+use rustix::cstr;
 use rustix::fs::{Mode, symlink, unlink};
 use std::fs;
-use std::collections::HashMap;
-use goblin::elf::{Elf, section_header, sym::Sym};
-use scroll::{Pwrite, ctx::SizeWith};
 
 use rustix::{
     fd::AsFd,
@@ -108,7 +105,7 @@ fn copy_file_to_debug_ramdisk() -> Result<()> {
     const SRC_FILE: &str = "/startup.sh";
     const DST_DIR: &str = "/debug_ramdisk";
     const DST_FILE: &str = "/debug_ramdisk/startup.sh";
-
+    
     // 2. 创建目标目录（兼容已存在）
     mkdir(DST_DIR, Mode::from_raw_mode(0o755)).or_else(|err| match err.kind() {
         ErrorKind::AlreadyExists => Ok(()),
@@ -116,11 +113,11 @@ fn copy_file_to_debug_ramdisk() -> Result<()> {
     })?;
 
     // 3. 模仿 KSU：先读取文件到内存缓冲区
-    let file_buffer = read(SRC_FILE)
+    let file_buffer = fs::read(SRC_FILE)
         .with_context(|| format!("读取源文件失败：{}", SRC_FILE))?;
 
     // 4. 模仿 KSU：将缓冲区写入目标文件
-    write(DST_FILE, &file_buffer)
+    fs::write(DST_FILE, &file_buffer)
         .with_context(|| format!("写入目标文件失败：{}", DST_FILE))?;
 
     // 5. 给脚本添加执行权限（必须！sh脚本需要可执行）

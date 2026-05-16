@@ -1,0 +1,15 @@
+{
+    "signing": {
+        "keystore_path": "./manager/test.jks",
+        "key_alias": "key0",
+        "keystore_pass": "000000",
+        "key_pass": "000000"
+    },
+    "app_build_type": "release",
+    "ksud_build_type": "release",
+    "arch": [
+        "arm64-v8a"
+    ],
+    "output_name": "ksu",
+    "strip": false
+}

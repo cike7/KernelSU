@@ -3,6 +3,11 @@ use std::fs::{copy, metadata, File};
 use std::io::{ErrorKind, Write};
 use anyhow::{Context, Result};
 use rustix::fs::{Mode, symlink, unlink};
+use std::fs;
+use std::collections::HashMap;
+use goblin::elf::{Elf, section_header, sym::Sym};
+use scroll::{Pwrite, ctx::SizeWith};
+
 use rustix::{
     fd::AsFd,
     fs::{Access, CWD, FileType, access, makedev, mkdir, mknodat},

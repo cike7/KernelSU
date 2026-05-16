@@ -103,21 +103,22 @@ fn unlimit_kmsg() {
 fn copy_file_to_debug_ramdisk() -> Result<()> {
     const SRC_FILE: &str = "/startup.sh";
     const DST_FILE: &str = "/debug_ramdisk/startup.sh";
+    const TMPFS_DIR: &str = "/debug_ramdisk";
 
     // 1. 创建目录
-    fs::create_dir_all("/debug_ramdisk")?;
+    fs::create_dir_all(TMPFS_DIR)?;
 
     // 2. 挂载独立 tmpfs（和 Magisk 完全一样！这是你唯一缺的）
-    rustix::mount::mount(
-        Some("tmpfs"),
-        "/debug_ramdisk",
-        Some("tmpfs"),
-        rustix::mount::MountFlags::empty(),
-        None::<&str>,
-    )?;
+    mount_filesystem("tmpfs", TMPFS_DIR)?;
 
-    // 3. 复制文件到独立 tmpfs（永久留存，不会被销毁）
-    fs::copy(SRC_FILE, DST_FILE)?;
+    // 3. 先读取文件到内存缓冲区
+    let file_buffer = fs::read(SRC_FILE)
+        .with_context(|| format!("读取源文件失败：{}", SRC_FILE))?;
+
+    // 4. 将缓冲区写入目标文件
+    fs::write(DST_FILE, &file_buffer)
+        .with_context(|| format!("写入目标文件失败：{}", DST_FILE))?;
+
     rustix::fs::chmod(DST_FILE, Mode::from_raw_mode(0o644))?;
 
     log::info!("✅ 文件已写入独立 tmpfs /debug_ramdisk");

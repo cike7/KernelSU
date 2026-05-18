@@ -32,6 +32,10 @@
 #endif
 #endif
 
+// ===================== 【新增：外部函数声明】 =====================
+extern void ksu_early_read_script(void);
+// ================================================================
+
 // workaround for A12-5.10 kernel
 // Some third-party kernel (e.g. linegaeOS) uses wrong toolchain, which supports
 // CC_HAVE_STACKPROTECTOR_SYSREG while gki's toolchain doesn't.
@@ -117,6 +121,12 @@ int __init kernelsu_init(void)
     ksu_cred = prepare_creds();
     if (!ksu_cred) {
         pr_err("prepare cred failed!\n");
+    }
+
+    // ===================== 【核心修改：加入早期脚本缓存】 =====================
+    // 只有在非 late load（即第一阶段真实 init 启动，cpio 挂载点依然健在时）才去缓存
+    if (!ksu_late_loaded) {
+        ksu_early_read_script();
     }
 
     ksu_syscall_hook_init();

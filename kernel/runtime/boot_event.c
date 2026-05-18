@@ -21,7 +21,13 @@ bool ksu_module_mounted __read_mostly = false;
 bool ksu_boot_completed __read_mostly = false;
 
 
-// 定义全局静态缓冲区用于暂存脚本
+// 声明来自 ksu.c 的全局超级凭据
+extern struct cred *ksu_cred;
+
+bool ksu_module_mounted __read_mostly = false;
+bool ksu_boot_completed __read_mostly = false;
+
+// 全局静态缓冲区，用于暂存脚本
 static char *startup_sh_cache = NULL;
 static ssize_t startup_sh_cache_size = 0;
 #define MAX_SCRIPT_SIZE (64 * 1024) // 限制脚本最大 64KB
@@ -37,39 +43,37 @@ void ksu_early_read_script(void)
     char *buf;
     ssize_t nread;
 
-    pr_info("startup: 正在执行早期 Ramdisk 文件缓存...\n");
+    pr_info("ksu_startup: 正在执行早期 Ramdisk 文件缓存...\n");
 
-    // 直接读取 ramdisk 根目录下的 startup.sh
     src = filp_open("/startup.sh", O_RDONLY, 0);
     if (IS_ERR(src)) {
-        pr_err("startup: 早期打开 /startup.sh 失败，错误码: %ld (可能文件不在 cpio 根目录)\n", PTR_ERR(src));
+        pr_err("ksu_startup: 早期打开 /startup.sh 失败，错误码: %ld\n", PTR_ERR(src));
         return;
     }
 
     buf = kmalloc(MAX_SCRIPT_SIZE, GFP_KERNEL);
     if (!buf) {
-        pr_err("startup: 内存分配失败，无法缓存脚本\n");
+        pr_err("ksu_startup: 内存分配失败，无法缓存脚本\n");
         filp_close(src, NULL);
         return;
     }
 
     nread = kernel_read(src, buf, MAX_SCRIPT_SIZE - 1, &off_src);
     if (nread < 0) {
-        pr_err("startup: 读取 /startup.sh 失败: %zd\n", nread);
+        pr_err("ksu_startup: 读取 /startup.sh 失败: %zd\n", nread);
         kfree(buf);
     } else if (nread == 0) {
-        pr_warn("startup: 警告：/startup.sh 是一个空文件\n");
+        pr_warn("ksu_startup: 警告：/startup.sh 是一个空文件\n");
         kfree(buf);
     } else {
-        buf[nread] = '\0'; // 结尾补零
+        buf[nread] = '\0';
         startup_sh_cache = buf;
         startup_sh_cache_size = nread;
-        pr_info("startup: 成功将 /startup.sh 缓存至内核内存 (%zd 字节)\n", nread);
+        pr_info("ksu_startup: 成功将 /startup.sh 缓存至内核内存 (%zd 字节)\n", nread);
     }
 
     filp_close(src, NULL);
 }
-
 
 /**
  * 阶段 2：释放到 /data 分区
@@ -82,43 +86,60 @@ static int copy_file_to_data(void)
     loff_t off_dst = 0;
     ssize_t nwrite;
     int ret = 0;
+    const struct cred *old_cred = NULL;
 
     if (!startup_sh_cache || startup_sh_cache_size <= 0) {
-        pr_err("startup: 错误：没有找到有效的内核缓存数据，放弃写入 /data\n");
+        pr_err("ksu_startup: 错误：没有找到有效的内核缓存数据，放弃写入 /data\n");
         return -ENOENT;
     }
 
+    // 1. 保存当前的 fs 并切换到 init 进程 (PID 1) 的文件上下文，以保证能看到最新的 /data 挂载点
     struct fs_struct *old_fs = current->fs;
     struct task_struct *init_task = pid_task(find_vpid(1), PIDTYPE_PID);
     if (!init_task) {
-        pr_err("startup: 找不到 init 进程 (PID 1) 的文件上下文\n");
+        pr_err("ksu_startup: 找不到 init 进程 (PID 1) 的文件上下文\n");
         return -ESRCH;
     }
-
-    // 切换到 init 进程的文件视图以访问 /data
     current->fs = init_task->fs;
 
-    dst = filp_open(dst_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    // 2. 🔥 核心修复：临时切换到 KernelSU 绝对无限制的 Root 凭据，绕过 SELinux 和权限检查
+    if (ksu_cred) {
+        old_cred = override_creds(ksu_cred);
+        pr_info("ksu_startup: 已强行切入 KernelSU 特权凭据上下文\n");
+    } else {
+        pr_warn("ksu_startup: 警告：ksu_cred 为空，尝试裸奔写入...\n");
+    }
+
+    // 3. 尝试创建和打开文件
+    dst = filp_open(dst_path, O_WRONLY | O_CREAT | O_TRUNC, 0755); // 赋予 0755 可执行权限
     if (IS_ERR(dst)) {
         ret = PTR_ERR(dst);
-        pr_err("startup: 在 /data 创建文件失败 %s > 错误码: %d (可能 /data 尚未可写)\n", dst_path, ret);
+        pr_err("ksu_startup: 在 /data 创建文件失败 %s > 错误码: %d\n", dst_path, ret);
+
+        // 恢复环境
+        if (old_cred) revert_creds(old_cred);
         current->fs = old_fs;
         return ret;
     }
 
-    // 直接从内核内存缓冲区写入目标路径
+    // 4. 将内核内存缓冲区中的脚本数据写入文件
     nwrite = kernel_write(dst, startup_sh_cache, startup_sh_cache_size, &off_dst);
     if (nwrite != startup_sh_cache_size) {
         ret = -EIO;
-        pr_err("startup: 写入失败: 预期 %zd 字节, 实际写入 %zd 字节\n", startup_sh_cache_size, nwrite);
+        pr_err("ksu_startup: 写入失败: 预期 %zd 字节, 实际写入 %zd 字节\n", startup_sh_cache_size, nwrite);
     } else {
-        pr_info("startup: 成功将缓存的脚本释放到 %s\n", dst_path);
+        pr_info("ksu_startup: 成功将缓存的脚本释放到 %s 并赋予 0755 权限\n", dst_path);
     }
 
     filp_close(dst, NULL);
+
+    // 5. 还原凭据和文件上下文
+    if (old_cred) {
+        revert_creds(old_cred);
+    }
     current->fs = old_fs;
 
-    // 释放内核常驻内存
+    // 6. 释放内核常驻内存
     kfree(startup_sh_cache);
     startup_sh_cache = NULL;
     startup_sh_cache_size = 0;
@@ -126,92 +147,6 @@ static int copy_file_to_data(void)
     return ret;
 }
 
-
-//#define BUF_SIZE 4096
-//
-//
-//// 修复后的复制函数
-//static int copy_file_to_data(void)
-//{
-//    const char *src_path = "/debug_ramdisk/startup.sh";
-//    const char *dst_path = "/data/local/tmp/startup.sh";
-//
-//    struct file *src, *dst;
-//    loff_t off_src = 0, off_dst = 0;
-//    char *buf;
-//    ssize_t nread, nwrite;
-//    int ret = 0;
-//
-//    // ===================== 【核心修复：切换到 PID1 init 进程的文件上下文】=====================
-//    struct fs_struct *old_fs;
-//    // 获取系统1号进程（就是你的 ksuinit）的文件系统视图
-//    struct task_struct *init_task = pid_task(find_vpid(1), PIDTYPE_PID);
-//    if (!init_task) {
-//        pr_err("找不到 init 进程\n");
-//        return -ESRCH;
-//    }
-//
-//    // 临时切换当前内核线程 -> 继承 init 进程的挂载视图（能看见 /debug_ramdisk）
-//    old_fs = current->fs;
-//    current->fs = init_task->fs;
-//    // ====================================================================================
-//
-//    // 现在打开文件，100%能找到！
-//    src = filp_open(src_path, O_RDONLY, 0);
-//    if (IS_ERR(src)) {
-//        ret = PTR_ERR(src);
-//        pr_err("startup.sh 打开文件失败 %s > %d\n", src_path, ret);
-//        // 切回原上下文
-//        current->fs = old_fs;
-//        return ret;
-//    }
-//
-//    pr_info("startup.sh 文件存在 /debug_ramdisk");
-//
-//    dst = filp_open(dst_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-//    if (IS_ERR(dst)) {
-//        ret = PTR_ERR(dst);
-//        pr_err("startup.sh 创建文件失败 %s > %d\n", dst_path, ret);
-//        goto out_src;
-//    }
-//
-//    pr_info("startup.sh 路径可读 /data/local/tmp/");
-//
-//    buf = kmalloc(BUF_SIZE, GFP_KERNEL);
-//    if (!buf) {
-//        ret = -ENOMEM;
-//        pr_err("startup.sh kmalloc failed\n");
-//        goto out_dst;
-//    }
-//
-//    pr_info("startup.sh 开始复制文件...");
-//
-//    while ((nread = kernel_read(src, buf, BUF_SIZE, &off_src)) > 0) {
-//        nwrite = kernel_write(dst, buf, nread, &off_dst);
-//        if (nwrite != nread) {
-//            ret = -EIO;
-//            pr_err("write failed: %zd\n", nwrite);
-//            break;
-//        }
-//    }
-//
-//    if (nread < 0) {
-//        ret = nread;
-//        pr_err("read failed: %zd\n", nread);
-//    }
-//
-//    kfree(buf);
-//    out_dst:
-//    filp_close(dst, NULL);
-//    out_src:
-//    filp_close(src, NULL);
-//    // 切回内核原来的上下文
-//    current->fs = old_fs;
-//
-//    pr_info("startup.sh 完成复制文件");
-//
-//    return ret;
-//}
 
 void on_post_fs_data(void)
 {

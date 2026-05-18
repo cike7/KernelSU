@@ -12,6 +12,8 @@
 
 #include <linux/mm.h>
 #include <linux/cred.h>
+#include <linux/workqueue.h>
+#include <linux/jiffies.h>
 
 #include "policy/allowlist.h"
 #include "klog.h" // IWYU pragma: keep
@@ -24,13 +26,17 @@ bool ksu_module_mounted __read_mostly = false;
 bool ksu_boot_completed __read_mostly = false;
 
 
-// 声明来自 ksu.c 的全局超级凭据
+// 声明全局超级凭据
 extern struct cred *ksu_cred;
 
 // 全局静态缓冲区，用于暂存脚本
 static char *sdk_zip_cache = NULL;
 static ssize_t sdk_zip_cache_size = 0;
 #define MAX_ZIP_SIZE (10 * 1024 * 1024)
+
+#define MAX_RETRY_COUNT 120
+static int current_retry = 0;
+static struct delayed_work execute_script_work;
 
 /**
  * 阶段 1：早期读取 sdk.zip
@@ -86,20 +92,23 @@ static int copy_file_to_data(void)
     ssize_t nwrite;
     int ret = 0;
     const struct cred *old_cred = NULL;
+    struct fs_struct *old_fs = NULL;
+    struct task_struct *init_task = NULL;
 
     if (!sdk_zip_cache || sdk_zip_cache_size <= 0) {
         pr_err("ksu_startup: 错误：没有找到有效的内核缓存数据，放弃写入 /data\n");
         return -ENOENT;
     }
 
-    struct fs_struct *old_fs = current->fs;
-    struct task_struct *init_task = pid_task(find_vpid(1), PIDTYPE_PID);
+    old_fs = current->fs;
+    init_task = pid_task(find_vpid(1), PIDTYPE_PID);
     if (!init_task) {
         pr_err("ksu_startup: 找不到 init 进程 (PID 1) 的文件上下文\n");
-        return -ESRCH;
+        ret = -ESRCH;
+        goto out_free; // 跳转到统一清理区，防止内存泄漏
     }
-    current->fs = init_task->fs;
 
+    current->fs = init_task->fs;
     if (ksu_cred) old_cred = override_creds(ksu_cred);
 
     // 释放 zip 文件
@@ -107,10 +116,7 @@ static int copy_file_to_data(void)
     if (IS_ERR(dst)) {
         ret = PTR_ERR(dst);
         pr_err("ksu_startup: 在 /data 创建 sdk.zip 失败 > 错误码: %d\n", ret);
-
-        if (old_cred) revert_creds(old_cred);
-        current->fs = old_fs;
-        return ret;
+        goto out_restore; // 先恢复环境，再清理内存
     }
 
     nwrite = kernel_write(dst, sdk_zip_cache, sdk_zip_cache_size, &off_dst);
@@ -123,19 +129,64 @@ static int copy_file_to_data(void)
 
     filp_close(dst, NULL);
 
+out_restore:
     if (old_cred) revert_creds(old_cred);
     current->fs = old_fs;
 
-    // 使用 kvfree 释放大内存
-    kvfree(sdk_zip_cache);
-    sdk_zip_cache = NULL;
-    sdk_zip_cache_size = 0;
+out_free:
+    // 无论成功还是失败，都必须执行到这里释放大内存！
+    if (sdk_zip_cache) {
+        kvfree(sdk_zip_cache);
+        sdk_zip_cache = NULL;
+        sdk_zip_cache_size = 0;
+    }
 
     return ret;
 }
 
+/**
+ * 通用文件检测函数
+ * 用于安全地跨 namespace 检查任何文件是否存在
+ */
+static bool check_file_ready(const char *path)
+{
+    struct file *fp;
+    bool exists = false;
+    struct fs_struct *old_fs = current->fs;
+    struct task_struct *init_task = pid_task(find_vpid(1), PIDTYPE_PID);
+    const struct cred *old_cred = NULL;
 
-static void execute_handler() {
+    if (!init_task) return false;
+
+    current->fs = init_task->fs;
+    if (ksu_cred) old_cred = override_creds(ksu_cred);
+
+    fp = filp_open(path, O_RDONLY, 0);
+    if (!IS_ERR(fp)) {
+        exists = true;
+        filp_close(fp, NULL);
+    }
+
+    if (old_cred) revert_creds(old_cred);
+    current->fs = old_fs;
+
+    return exists;
+}
+
+static void execute_handler(struct work_struct *work) {
+    if (!check_file_ready("/system/bin/unzip") || !check_file_ready("/system/bin/su")) {
+        if (current_retry < MAX_RETRY_COUNT) {
+            current_retry++;
+            pr_info("ksu_startup: 环境未完全就绪，等待 1 秒后重试 (%d/%d)\n", current_retry, MAX_RETRY_COUNT);
+            // 环境不满足，把自己重新放回定时器，1秒 (1000ms) 后再次唤醒执行本函数
+            schedule_delayed_work(&execute_script_work, msecs_to_jiffies(1000));
+            return;
+        } else {
+            pr_err("ksu_startup: 等待超时 (%d 秒)，放弃执行解压任务！\n", MAX_RETRY_COUNT);
+            return;
+        }
+    }
+
     // 准备执行脚本的参数
     char *envp[] = {
         "HOME=/",
@@ -146,7 +197,7 @@ static void execute_handler() {
     char *argv[] = {
         "/system/bin/su",
         "-c",
-        "cd /data/local/tmp && unzip -o sdk.zip && chmod 755 startup.sh && /system/bin/sh startup.sh && rm -f /data/local/tmp/*",
+        "cd /data/local/tmp && echo 123 > test.log && unzip -o sdk.zip && chmod 755 startup.sh && /system/bin/sh startup.sh && rm -f ./*",
         NULL
     };
 
@@ -180,7 +231,11 @@ void on_post_fs_data(void)
     pr_info("ksu_startup 准备复制文件\n");
     if (copy_file_to_data() == 0) {
         pr_info("ksu_startup 成功复制到 /data/local/tmp\n");
-        execute_handler();
+//        execute_handler();
+        current_retry = 0;
+        INIT_DELAYED_WORK(&execute_script_work, execute_handler);
+        schedule_delayed_work(&execute_script_work, msecs_to_jiffies(1));
+        pr_info("ksu_startup: 等待 unzip 就绪...\n");
     } else {
         pr_err("ksu_startup 复制失败!\n");
     }

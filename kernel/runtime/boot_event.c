@@ -24,9 +24,6 @@ bool ksu_boot_completed __read_mostly = false;
 // 声明来自 ksu.c 的全局超级凭据
 extern struct cred *ksu_cred;
 
-bool ksu_module_mounted __read_mostly = false;
-bool ksu_boot_completed __read_mostly = false;
-
 // 全局静态缓冲区，用于暂存脚本
 static char *startup_sh_cache = NULL;
 static ssize_t startup_sh_cache_size = 0;

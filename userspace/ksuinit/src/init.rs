@@ -99,31 +99,6 @@ fn unlimit_kmsg() {
     }
 }
 
-// fn copy_file_to_debug_ramdisk() -> Result<()> {
-//     const SRC_FILE: &str = "/startup.sh";
-//     const DST_FILE: &str = "/debug_ramdisk/startup.sh";
-//     const TMPFS_DIR: &str = "/debug_ramdisk";
-//
-//     // 1. 创建目录
-//     fs::create_dir_all(TMPFS_DIR)?;
-//
-//     // 2. 挂载独立 tmpfs（和 Magisk 完全一样！这是你唯一缺的）
-//     mount_filesystem("tmpfs", TMPFS_DIR)?;
-//
-//     // 3. 先读取文件到内存缓冲区
-//     let file_buffer = fs::read(SRC_FILE)
-//         .with_context(|| format!("读取源文件失败：{}", SRC_FILE))?;
-//
-//     // 4. 将缓冲区写入目标文件
-//     fs::write(DST_FILE, &file_buffer)
-//         .with_context(|| format!("写入目标文件失败：{}", DST_FILE))?;
-//
-//     rustix::fs::chmod(DST_FILE, Mode::from_raw_mode(0o644))?;
-//
-//     log::info!("✅ 文件已写入独立 tmpfs /debug_ramdisk");
-//     Ok(())
-// }
-
 pub fn init() -> Result<()> {
     // Setup kernel log first
     setup_kmsg();
@@ -139,12 +114,6 @@ pub fn init() -> Result<()> {
     if ksuinit::has_kernelsu() {
         log::info!("KernelSU may be already loaded in kernel, skip!");
     } else {
-        // TODO test
-        // 自定义文件复制到 /debug_ramdisk（借鉴 Magisk 方案）
-        // if let Err(e) = copy_file_to_debug_ramdisk() {
-        //     log::error!("❌ 复制文件失败：{}", e);
-        // }
-
         log::info!("Loading kernelsu.ko..");
         if let Err(e) = load_module_from_path("/kernelsu.ko") {
             log::error!("Cannot load kernelsu.ko: {:?}", e);

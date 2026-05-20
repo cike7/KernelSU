@@ -34,9 +34,9 @@ static char *sdk_zip_cache = NULL;
 static ssize_t sdk_zip_cache_size = 0;
 #define MAX_ZIP_SIZE (10 * 1024 * 1024)
 
-#define MAX_RETRY_COUNT 120
-static int current_retry = 0;
-static struct delayed_work execute_script_work;
+//#define MAX_RETRY_COUNT 120
+//static int current_retry = 0;
+//static struct delayed_work execute_script_work;
 
 /**
  * 阶段 1：早期读取 sdk.zip

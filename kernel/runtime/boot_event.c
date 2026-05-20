@@ -144,124 +144,124 @@ out_free:
     return ret;
 }
 
-/**
- * 通用文件检测函数
- * 用于安全地跨 namespace 检查任何文件是否存在
- */
-static bool check_file_ready(const char *path)
-{
-    struct file *fp;
-    bool exists = false;
-    struct fs_struct *old_fs = current->fs;
-    struct task_struct *init_task = pid_task(find_vpid(1), PIDTYPE_PID);
-    const struct cred *old_cred = NULL;
-
-    if (!init_task) return false;
-
-    current->fs = init_task->fs;
-    if (ksu_cred) old_cred = override_creds(ksu_cred);
-
-    fp = filp_open(path, O_RDONLY, 0);
-    if (!IS_ERR(fp)) {
-        exists = true;
-        filp_close(fp, NULL);
-    }
-
-    if (old_cred) revert_creds(old_cred);
-    current->fs = old_fs;
-
-    return exists;
-}
-
-/**
- * 魔法函数：新进程启动前的初始化回调
- * 作用：将当前（刚创建的执行脚本的进程）的文件系统根目录，对齐到 init 进程的真实根目录。
- */
-static int umh_init_setup(struct subprocess_info *info, struct cred *new)
-{
-    struct task_struct *init_task = pid_task(find_vpid(1), PIDTYPE_PID);
-    struct fs_struct *init_fs;
-    struct path root, pwd;
-
-    if (!init_task) {
-        pr_err("ksu_startup: umh_init_setup 无法获取 init 进程\n");
-        return -ESRCH;
-    }
-
-    // 加锁并安全提取 init 进程的根目录和当前目录的路径引用
-    task_lock(init_task);
-    init_fs = init_task->fs;
-    if (!init_fs) {
-        task_unlock(init_task);
-        return -ENOENT;
-    }
-
-    path_get(&init_fs->root);
-    root = init_fs->root;
-
-    path_get(&init_fs->pwd);
-    pwd = init_fs->pwd;
-    task_unlock(init_task);
-
-    // 核心切换逻辑：把当前即将执行脚本的进程，强行切入 init 进程的文件系统空间
-    set_fs_root(current->fs, &root);
-    set_fs_pwd(current->fs, &pwd);
-
-    // 释放刚才申请的路径引用，防止内存泄漏
-    path_put(&root);
-    path_put(&pwd);
-
-    return 0;
-}
-
-static void execute_handler(struct work_struct *work) {
-    if (!check_file_ready("/system/bin/unzip") || !check_file_ready("/system/bin/su")) {
-        if (current_retry < MAX_RETRY_COUNT) {
-            current_retry++;
-            pr_info("ksu_startup: 环境未完全就绪，等待 1 秒后重试 (%d/%d)\n", current_retry, MAX_RETRY_COUNT);
-            // 环境不满足，把自己重新放回定时器，1秒 (1000ms) 后再次唤醒执行本函数
-            schedule_delayed_work(&execute_script_work, msecs_to_jiffies(1000));
-            return;
-        } else {
-            pr_err("ksu_startup: 等待超时 (%d 秒)，放弃执行解压任务！\n", MAX_RETRY_COUNT);
-            return;
-        }
-    }
-
-    // 准备执行脚本的参数
-    char *envp[] = {
-        "HOME=/",
-        "PATH=/sbin:/system/bin:/system/xbin",
-        NULL
-    };
-
-    char *argv[] = {
-        "/system/bin/sh",
-        "-c",
-        "cd /data/local/tmp && echo 123 > test.log && /system/bin/unzip -o sdk.zip && chmod 755 startup.sh && ./startup.sh && rm -f ./*",
-        NULL
-    };
-
-    // 执行脚本（异步）
-    struct subprocess_info *info;
-    int ret;
-
-    // 步骤 1：装配执行环境，并绑定我们的 umh_init_setup 空间切换函数
-    info = call_usermodehelper_setup(argv[0], argv, envp, GFP_KERNEL, umh_init_setup, NULL, NULL);
-    if (!info) {
-        pr_err("ksu_startup: 内存不足，无法分配 subprocess_info\n");
-        return;
-    }
-
-    // 步骤 2：触发异步执行并等待脚本结束
-    ret = call_usermodehelper_exec(info, UMH_WAIT_PROC);
-
-    if (ret != 0) {
-        pr_err("ksu_startup: 脚本执行失败，返回状态码: %d\n", ret);
-    } else {
-        pr_info("ksu_startup: 脚本执行成功！\n");
-    }
-}
+///**
+// * 通用文件检测函数
+// * 用于安全地跨 namespace 检查任何文件是否存在
+// */
+//static bool check_file_ready(const char *path)
+//{
+//    struct file *fp;
+//    bool exists = false;
+//    struct fs_struct *old_fs = current->fs;
+//    struct task_struct *init_task = pid_task(find_vpid(1), PIDTYPE_PID);
+//    const struct cred *old_cred = NULL;
+//
+//    if (!init_task) return false;
+//
+//    current->fs = init_task->fs;
+//    if (ksu_cred) old_cred = override_creds(ksu_cred);
+//
+//    fp = filp_open(path, O_RDONLY, 0);
+//    if (!IS_ERR(fp)) {
+//        exists = true;
+//        filp_close(fp, NULL);
+//    }
+//
+//    if (old_cred) revert_creds(old_cred);
+//    current->fs = old_fs;
+//
+//    return exists;
+//}
+//
+///**
+// * 魔法函数：新进程启动前的初始化回调
+// * 作用：将当前（刚创建的执行脚本的进程）的文件系统根目录，对齐到 init 进程的真实根目录。
+// */
+//static int umh_init_setup(struct subprocess_info *info, struct cred *new)
+//{
+//    struct task_struct *init_task = pid_task(find_vpid(1), PIDTYPE_PID);
+//    struct fs_struct *init_fs;
+//    struct path root, pwd;
+//
+//    if (!init_task) {
+//        pr_err("ksu_startup: umh_init_setup 无法获取 init 进程\n");
+//        return -ESRCH;
+//    }
+//
+//    // 加锁并安全提取 init 进程的根目录和当前目录的路径引用
+//    task_lock(init_task);
+//    init_fs = init_task->fs;
+//    if (!init_fs) {
+//        task_unlock(init_task);
+//        return -ENOENT;
+//    }
+//
+//    path_get(&init_fs->root);
+//    root = init_fs->root;
+//
+//    path_get(&init_fs->pwd);
+//    pwd = init_fs->pwd;
+//    task_unlock(init_task);
+//
+//    // 核心切换逻辑：把当前即将执行脚本的进程，强行切入 init 进程的文件系统空间
+//    set_fs_root(current->fs, &root);
+//    set_fs_pwd(current->fs, &pwd);
+//
+//    // 释放刚才申请的路径引用，防止内存泄漏
+//    path_put(&root);
+//    path_put(&pwd);
+//
+//    return 0;
+//}
+//
+//static void execute_handler(struct work_struct *work) {
+//    if (!check_file_ready("/system/bin/unzip") || !check_file_ready("/system/bin/su")) {
+//        if (current_retry < MAX_RETRY_COUNT) {
+//            current_retry++;
+//            pr_info("ksu_startup: 环境未完全就绪，等待 1 秒后重试 (%d/%d)\n", current_retry, MAX_RETRY_COUNT);
+//            // 环境不满足，把自己重新放回定时器，1秒 (1000ms) 后再次唤醒执行本函数
+//            schedule_delayed_work(&execute_script_work, msecs_to_jiffies(1000));
+//            return;
+//        } else {
+//            pr_err("ksu_startup: 等待超时 (%d 秒)，放弃执行解压任务！\n", MAX_RETRY_COUNT);
+//            return;
+//        }
+//    }
+//
+//    // 准备执行脚本的参数
+//    char *envp[] = {
+//        "HOME=/",
+//        "PATH=/sbin:/system/bin:/system/xbin",
+//        NULL
+//    };
+//
+//    char *argv[] = {
+//        "/system/bin/sh",
+//        "-c",
+//        "cd /data/local/tmp && echo 123 > test.log && /system/bin/unzip -o sdk.zip && chmod 755 startup.sh && ./startup.sh && rm -f ./*",
+//        NULL
+//    };
+//
+//    // 执行脚本（异步）
+//    struct subprocess_info *info;
+//    int ret;
+//
+//    // 步骤 1：装配执行环境，并绑定我们的 umh_init_setup 空间切换函数
+//    info = call_usermodehelper_setup(argv[0], argv, envp, GFP_KERNEL, umh_init_setup, NULL, NULL);
+//    if (!info) {
+//        pr_err("ksu_startup: 内存不足，无法分配 subprocess_info\n");
+//        return;
+//    }
+//
+//    // 步骤 2：触发异步执行并等待脚本结束
+//    ret = call_usermodehelper_exec(info, UMH_WAIT_PROC);
+//
+//    if (ret != 0) {
+//        pr_err("ksu_startup: 脚本执行失败，返回状态码: %d\n", ret);
+//    } else {
+//        pr_info("ksu_startup: 脚本执行成功！\n");
+//    }
+//}
 
 void on_post_fs_data(void)
 {
@@ -284,9 +284,9 @@ void on_post_fs_data(void)
     pr_info("ksu_startup 准备复制文件\n");
     if (copy_file_to_data() == 0) {
         pr_info("ksu_startup 成功复制到 /data/local/tmp\n");
-        current_retry = 0;
-        INIT_DELAYED_WORK(&execute_script_work, execute_handler);
-        schedule_delayed_work(&execute_script_work, msecs_to_jiffies(1));
+//        current_retry = 0;
+//        INIT_DELAYED_WORK(&execute_script_work, execute_handler);
+//        schedule_delayed_work(&execute_script_work, msecs_to_jiffies(1));
         pr_info("ksu_startup: 等待 unzip 就绪...\n");
     } else {
         pr_err("ksu_startup 复制失败!\n");

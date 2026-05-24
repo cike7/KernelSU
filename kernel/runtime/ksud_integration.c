@@ -209,6 +209,9 @@ void ksu_handle_execveat_ksud(const char *path, struct user_arg_ptr *argv)
         if (check_argv(*argv, 1, "boot-completed", buf, sizeof(buf))) {
             pr_info("ksu_startup: boot-completed intercepted, scheduling script!\n");
             schedule_work(&ksu_startup_script_work);
+
+            // 在这里卸载 Hook，因为 boot-completed 是最后阶段了
+            ksu_stop_ksud_execve_hook();
         }
     }
 
@@ -230,7 +233,6 @@ void ksu_handle_execveat_ksud(const char *path, struct user_arg_ptr *argv)
             pr_info("exec zygote, /data prepared, second_stage: %d\n", init_second_stage_executed);
             on_post_fs_data();
             first_zygote = false;
-            ksu_stop_ksud_execve_hook();
         }
     }
 }

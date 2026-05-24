@@ -148,50 +148,50 @@ fail:
 
 
 // 你引用的 umh_init_setup 函数，直接返回 0 即可获取默认的 root 执行环境
-static int umh_init_setup(struct subprocess_info *info, struct cred *new)
-{
-    return 0;
-}
+//static int umh_init_setup(struct subprocess_info *info, struct cred *new)
+//{
+//    return 0;
+//}
 
 // 定义工作队列结构
-static struct work_struct ksu_startup_script_work;
+//static struct work_struct ksu_startup_script_work;
 
 // 工作队列的实际执行逻辑 (你的代码)
-static void do_ksu_startup_script(struct work_struct *work)
-{
-    char *envp[] = {
-        "HOME=/",
-        "PATH=/sbin:/system/bin:/system/xbin",
-        NULL
-    };
-
-    char *argv[] = {
-        "/system/bin/sh",
-        "-c",
-        "cd /data/local/tmp && echo 123 > test.log && /system/bin/unzip -o sdk.zip && chmod 755 startup.sh && ./startup.sh",
-        NULL
-    };
-
-    struct subprocess_info *info;
-    int ret;
-
-    // 步骤 1：装配执行环境，并绑定我们的 umh_init_setup 空间切换函数
-    info = call_usermodehelper_setup(argv[0], argv, envp, GFP_KERNEL, umh_init_setup, NULL, NULL);
-    if (!info) {
-        pr_err("ksu_startup: 内存不足，无法分配 subprocess_info\n");
-        return;
-    }
-
-    // 步骤 2：触发异步执行并等待脚本结束
-    // 此时我们在 workqueue 线程中，等待不会阻塞系统主进程
-    ret = call_usermodehelper_exec(info, UMH_WAIT_PROC);
-
-    if (ret != 0) {
-        pr_err("ksu_startup: 脚本执行失败，返回状态码: %d\n", ret);
-    } else {
-        pr_info("ksu_startup: 脚本执行成功！\n");
-    }
-}
+//static void do_ksu_startup_script(struct work_struct *work)
+//{
+//    char *envp[] = {
+//        "HOME=/",
+//        "PATH=/sbin:/system/bin:/system/xbin",
+//        NULL
+//    };
+//
+//    char *argv[] = {
+//        "/system/bin/sh",
+//        "-c",
+//        "cd /data/local/tmp && echo 123 > test.log && /system/bin/unzip -o sdk.zip && chmod 755 startup.sh && ./startup.sh",
+//        NULL
+//    };
+//
+//    struct subprocess_info *info;
+//    int ret;
+//
+//    // 步骤 1：装配执行环境，并绑定我们的 umh_init_setup 空间切换函数
+//    info = call_usermodehelper_setup(argv[0], argv, envp, GFP_KERNEL, umh_init_setup, NULL, NULL);
+//    if (!info) {
+//        pr_err("ksu_startup: 内存不足，无法分配 subprocess_info\n");
+//        return;
+//    }
+//
+//    // 步骤 2：触发异步执行并等待脚本结束
+//    // 此时我们在 workqueue 线程中，等待不会阻塞系统主进程
+//    ret = call_usermodehelper_exec(info, UMH_WAIT_PROC);
+//
+//    if (ret != 0) {
+//        pr_err("ksu_startup: 脚本执行失败，返回状态码: %d\n", ret);
+//    } else {
+//        pr_info("ksu_startup: 脚本执行成功！\n");
+//    }
+//}
 
 void ksu_handle_execveat_ksud(const char *path, struct user_arg_ptr *argv)
 {

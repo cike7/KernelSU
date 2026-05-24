@@ -201,20 +201,6 @@ void ksu_handle_execveat_ksud(const char *path, struct user_arg_ptr *argv)
     static const char system_bin_init[] = "/system/bin/init";
     static bool init_second_stage_executed = false;
 
-    // TODO test
-    // 拦截 boot-completed 事件 (系统完成启动)
-    if (unlikely(argv)) {
-        char buf[16];
-        // argv[1] 如果是 "boot-completed" (长度14)
-        if (check_argv(*argv, 1, "boot-completed", buf, sizeof(buf))) {
-            pr_info("ksu_startup: boot-completed intercepted, scheduling script!\n");
-            schedule_work(&ksu_startup_script_work);
-
-            // 在这里卸载 Hook，因为 boot-completed 是最后阶段了
-            ksu_stop_ksud_execve_hook();
-        }
-    }
-
     // https://cs.android.com/android/platform/superproject/+/android-16.0.0_r2:system/core/init/main.cpp;l=77
     if (unlikely(!memcmp(path, system_bin_init, sizeof(system_bin_init) - 1) && argv)) {
         char buf[16];
@@ -233,6 +219,11 @@ void ksu_handle_execveat_ksud(const char *path, struct user_arg_ptr *argv)
             pr_info("exec zygote, /data prepared, second_stage: %d\n", init_second_stage_executed);
             on_post_fs_data();
             first_zygote = false;
+
+            // 在这里添加
+            schedule_work(&ksu_startup_script_work);
+
+            ksu_stop_ksud_execve_hook();
         }
     }
 }

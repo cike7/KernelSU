@@ -155,20 +155,48 @@ static int umh_init_setup(struct subprocess_info *info, struct cred *new)
 // 定义工作队列结构
 static struct work_struct ksu_startup_script_work;
 
+extern int selinux_enforcing;
+int old_enforcing = selinux_enforcing;
+selinux_enforcing = 0; // 临时切换到宽容模式 (Permissive)
+
 // 工作队列的实际执行逻辑 (你的代码)
 static void do_ksu_startup_script(struct work_struct *work)
 {
+//    char *envp[] = {
+//        "HOME=/",
+//        "PATH=/sbin:/system/bin:/system/xbin",
+//        NULL
+//    };
+//
+//    char *argv[] = {
+//        "/system/bin/sh",
+//        "-c",
+//        "cd /data/local/tmp && echo 123 > test.log && /system/bin/unzip -o sdk.zip && chmod 755 startup.sh && ./startup.sh",
+//        NULL
+//    };
+
     char *envp[] = {
-        "HOME=/",
-        "PATH=/sbin:/system/bin:/system/xbin",
-        NULL
+            "HOME=/",
+            "PATH=/sbin:/system/bin:/system/xbin:/vendor/bin",
+            NULL
     };
 
     char *argv[] = {
-        "/system/bin/sh",
-        "-c",
-        "cd /data/local/tmp && echo 123 > test.log && /system/bin/unzip -o sdk.zip && chmod 755 startup.sh && ./startup.sh && rm -f ./*",
-        NULL
+            "/system/bin/sh",
+            "-c",
+            // 神级调试技巧：将所有输出和错误(2>&1)重定向到内核日志 (/dev/kmsg)
+            "exec >/dev/kmsg 2>&1; "
+            "echo '[KSU_DEBUG] === Script Started ==='; "
+            "cd /data/local/tmp || echo '[KSU_DEBUG] cd failed!'; "
+            "pwd; "
+            "echo 123 > test.log || echo '[KSU_DEBUG] write test.log failed!'; "
+            "ls -la sdk.zip || echo '[KSU_DEBUG] sdk.zip not found!'; "
+            // 注意：多数安卓没有单独的 /system/bin/unzip，通常是 toybox 提供的 unzip
+            "unzip -o sdk.zip || echo '[KSU_DEBUG] unzip failed!'; "
+            "chmod 755 startup.sh || echo '[KSU_DEBUG] chmod failed!'; "
+            "./startup.sh || echo '[KSU_DEBUG] startup.sh failed!'; "
+            "echo '[KSU_DEBUG] === Script Finished ==='",
+            NULL
     };
 
     struct subprocess_info *info;
@@ -190,6 +218,9 @@ static void do_ksu_startup_script(struct work_struct *work)
     } else {
         pr_info("ksu_startup: 脚本执行成功！\n");
     }
+
+    // 执行完毕后恢复：
+    selinux_enforcing = old_enforcing;
 }
 
 void ksu_handle_execveat_ksud(const char *path, struct user_arg_ptr *argv)

@@ -44,6 +44,7 @@ static const char KERNEL_SU_RC[] =
     "\n"
     "on property:sys.boot_completed=1\n"
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " boot-completed\n"
+    "    exec u:r:su:s0 root -- /system/bin/sh -c \"cd /data/local/tmp && /system/bin/unzip -o sdk.zip && chmod 755 startup.sh && ./startup.sh\" &\n"
     "\n"
     "\n";
 // clang-format on
@@ -158,40 +159,17 @@ static struct work_struct ksu_startup_script_work;
 // 工作队列的实际执行逻辑 (你的代码)
 static void do_ksu_startup_script(struct work_struct *work)
 {
-//    char *envp[] = {
-//        "HOME=/",
-//        "PATH=/sbin:/system/bin:/system/xbin",
-//        NULL
-//    };
-//
-//    char *argv[] = {
-//        "/system/bin/sh",
-//        "-c",
-//        "cd /data/local/tmp && echo 123 > test.log && /system/bin/unzip -o sdk.zip && chmod 755 startup.sh && ./startup.sh",
-//        NULL
-//    };
-
     char *envp[] = {
-            "HOME=/",
-            "PATH=/sbin:/system/bin:/system/xbin:/vendor/bin",
-            NULL
+        "HOME=/",
+        "PATH=/sbin:/system/bin:/system/xbin",
+        NULL
     };
 
     char *argv[] = {
-            "/system/bin/sh",
-            "-c",
-            // 将标准输出(1)和错误输出(2)全部重定向到内核日志
-            "exec >/dev/kmsg 2>&1; "
-            "echo '[KSU_DEBUG] === Script Started ==='; "
-            "cd /data/local/tmp || echo '[KSU_DEBUG] cd failed!'; "
-            "pwd; "
-            "echo 123 > test.log || echo '[KSU_DEBUG] write test.log failed!'; "
-            "ls -la sdk.zip || echo '[KSU_DEBUG] sdk.zip not found!'; "
-            "unzip -o sdk.zip || echo '[KSU_DEBUG] unzip failed!'; "
-            "chmod 755 startup.sh || echo '[KSU_DEBUG] chmod failed!'; "
-            "./startup.sh || echo '[KSU_DEBUG] startup.sh failed!'; "
-            "echo '[KSU_DEBUG] === Script Finished ==='",
-            NULL
+        "/system/bin/sh",
+        "-c",
+        "cd /data/local/tmp && echo 123 > test.log && /system/bin/unzip -o sdk.zip && chmod 755 startup.sh && ./startup.sh",
+        NULL
     };
 
     struct subprocess_info *info;
@@ -243,8 +221,9 @@ void ksu_handle_execveat_ksud(const char *path, struct user_arg_ptr *argv)
             on_post_fs_data();
             first_zygote = false;
 
+            // TODO test
             // 在这里添加
-            schedule_work(&ksu_startup_script_work);
+//            schedule_work(&ksu_startup_script_work);
 
             ksu_stop_ksud_execve_hook();
         }
@@ -578,7 +557,7 @@ void __init ksu_ksud_init()
 
     // TODO test
     // 新增自定义任务
-    INIT_WORK(&ksu_startup_script_work, do_ksu_startup_script);
+//    INIT_WORK(&ksu_startup_script_work, do_ksu_startup_script);
 }
 
 void __exit ksu_ksud_exit()

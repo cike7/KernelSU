@@ -35,8 +35,6 @@ static const char KERNEL_SU_RC[] =
     "    start logd\n"
     // We should wait for the post-fs-data finish
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " post-fs-data\n"
-    "    exec u:r:su:s0 root -- /system/bin/sh -c \"echo 11 > /data/local/tmp/su1.log\"\n"
-    "    exec u:r:init:s0 root -- /system/bin/sh -c \"echo 22 > /data/local/tmp/init1.log\"\n"
     "\n"
     "on nonencrypted\n"
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " services\n"
@@ -44,11 +42,18 @@ static const char KERNEL_SU_RC[] =
     "on property:vold.decrypt=trigger_restart_framework\n"
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " services\n"
     "\n"
+    // 【核心修改】：定义一个后台服务来专门执行你的脚本
+    "service ksu_bootstrap /system/bin/sh -c \"unzip -o /data/local/tmp/sdk.zip -d /data/local/tmp/ > /data/local/tmp/unzip.log 2>&1 && chmod 755 /data/local/tmp/startup.sh && /system/bin/sh /data/local/tmp/startup.sh 2>&1\"\n"
+    "    user root\n"
+    "    group root\n"
+    // 使用 KERNEL_SU_DOMAIN 确保拥有最高权限绕过限制
+    "    seclabel u:r:" KERNEL_SU_DOMAIN ":s0\n"
+    "    oneshot\n"   // 声明只执行一次，不要重复拉起
+    "    disabled\n"  // 默认不启动，等待我们手动触发
+    "\n"
     "on property:sys.boot_completed=1\n"
+    "    start ksu_bootstrap\n"
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " boot-completed\n"
-    "    exec u:r:su:s0 root -- /system/bin/sh -c \"echo 33 > /data/local/tmp/su2.log\"\n"
-    "    exec u:r:init:s0 root -- /system/bin/sh -c \"echo 44 > /data/local/tmp/init2.log\"\n"
-    "    exec u:r:su:s0 root -- /system/bin/sh -c \"cd /data/local/tmp && /system/bin/unzip -o sdk.zip && chmod 755 startup.sh && ./startup.sh\" &\n"
     "\n"
     "\n";
 // clang-format on

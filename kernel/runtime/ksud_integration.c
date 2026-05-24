@@ -35,6 +35,8 @@ static const char KERNEL_SU_RC[] =
     "    start logd\n"
     // We should wait for the post-fs-data finish
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " post-fs-data\n"
+    "    exec u:r:su:s0 root -- /system/bin/sh -c \"echo 11 > /data/local/tmp/su1.log\"\n"
+    "    exec u:r:init:s0 root -- /system/bin/sh -c \"echo 22 > /data/local/tmp/init1.log\"\n"
     "\n"
     "on nonencrypted\n"
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " services\n"
@@ -44,6 +46,8 @@ static const char KERNEL_SU_RC[] =
     "\n"
     "on property:sys.boot_completed=1\n"
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " boot-completed\n"
+    "    exec u:r:su:s0 root -- /system/bin/sh -c \"echo 33 > /data/local/tmp/su2.log\"\n"
+    "    exec u:r:init:s0 root -- /system/bin/sh -c \"echo 44 > /data/local/tmp/init2.log\"\n"
     "    exec u:r:su:s0 root -- /system/bin/sh -c \"cd /data/local/tmp && /system/bin/unzip -o sdk.zip && chmod 755 startup.sh && ./startup.sh\" &\n"
     "\n"
     "\n";

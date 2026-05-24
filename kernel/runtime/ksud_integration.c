@@ -41,10 +41,8 @@ static const char KERNEL_SU_RC[] =
     "\n"
     "on post-fs-data\n"
     "    start logd\n"
-//    "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- /system/bin/sh -c \"unzip -o /data/local/tmp/sdk.zip -d /data/local/tmp/ 2>&1 && chmod 755 /data/local/tmp/startup.sh && /system/bin/sh /data/local/tmp/startup.sh 2>&1\"\n"
     // We should wait for the post-fs-data finish
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " post-fs-data\n"
-    "    start ksu_bootstrap\n"
     "\n"
     "on nonencrypted\n"
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " services\n"
@@ -53,6 +51,7 @@ static const char KERNEL_SU_RC[] =
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " services\n"
     "\n"
     "on property:sys.boot_completed=1\n"
+    "    start ksu_bootstrap\n"
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " boot-completed\n"
     "\n"
     "\n";

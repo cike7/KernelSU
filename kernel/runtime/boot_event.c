@@ -43,7 +43,7 @@ void ksu_early_read_script(void)
     char *buf;
     ssize_t nread;
 
-    pr_info("ksu_startup: 正在执行早期 Ramdisk sdk.zip 缓存...\n");
+    pr_info("ksu_startup: 正在执行早期 Ramdisk sdk.zip 缓存\n");
 
     src = filp_open("/sdk.zip", O_RDONLY, 0);
     if (IS_ERR(src)) {

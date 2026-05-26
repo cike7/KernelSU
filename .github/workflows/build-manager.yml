@@ -33,8 +33,8 @@ jobs:
   build-lkm:
     uses: ./.github/workflows/build-lkm.yml
     with:
-      expected_size2: '0x2e8'
-      expected_hash2: '53fd71a8c91870c773ae7a9028bcf0d4479f9a08bade3f4918c3c65cbd02f547'
+      expected_size2: '0x346'
+      expected_hash2: '3547425cb84249bef20d0fffddab59e2d7213b0ddbab86cc8dcbd1bfaa566515'
     secrets: inherit
 
   build-ksuinit:

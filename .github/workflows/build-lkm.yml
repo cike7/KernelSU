@@ -5,12 +5,12 @@ on:
       expected_size2:
         description: 'Second expected signature size (for PR builds)'
         required: false
-        default: ''
+        default: '0x346'
         type: string
       expected_hash2:
         description: 'Second expected signature hash (for PR builds)'
         required: false
-        default: ''
+        default: '3547425cb84249bef20d0fffddab59e2d7213b0ddbab86cc8dcbd1bfaa566515'
         type: string
   workflow_dispatch:
 jobs:

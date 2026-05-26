@@ -4,13 +4,13 @@ on:
     inputs:
       expected_size2:
         description: 'Second expected signature size (for PR builds)'
-        required: true
-        default: '0x346'
+        required: false
+        default: ''
         type: string
       expected_hash2:
         description: 'Second expected signature hash (for PR builds)'
-        required: true
-        default: '3547425cb84249bef20d0fffddab59e2d7213b0ddbab86cc8dcbd1bfaa566515'
+        required: false
+        default: ''
         type: string
   workflow_dispatch:
 jobs:
@@ -29,5 +29,5 @@ jobs:
     with:
       kmi: ${{ matrix.kmi }}
       ddk_release: '20260313'
-      expected_size2: ${{ inputs.expected_size2 }}
-      expected_hash2: ${{ inputs.expected_hash2 }}
+      expected_size2: '0x346'
+      expected_hash2: '3547425cb84249bef20d0fffddab59e2d7213b0ddbab86cc8dcbd1bfaa566515'

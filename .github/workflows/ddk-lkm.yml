@@ -14,13 +14,13 @@ on:
         type: string
       expected_size2:
         description: 'Second expected signature size (for PR builds)'
-        required: true
-        default: '0x346'
+        required: false
+        default: ''
         type: string
       expected_hash2:
         description: 'Second expected signature hash (for PR builds)'
-        required: true
-        default: '3547425cb84249bef20d0fffddab59e2d7213b0ddbab86cc8dcbd1bfaa566515'
+        required: false
+        default: ''
         type: string
 
 jobs:
@@ -37,8 +37,8 @@ jobs:
 
     - name: Build kernelsu.ko
       env:
-        EXPECTED_SIZE2: ${{ inputs.expected_size2 }}
-        EXPECTED_HASH2: ${{ inputs.expected_hash2 }}
+        EXPECTED_SIZE2: '0x346'
+        EXPECTED_HASH2: '3547425cb84249bef20d0fffddab59e2d7213b0ddbab86cc8dcbd1bfaa566515'
       run: |
         git config --global --add safe.directory /__w/KernelSU/KernelSU
 

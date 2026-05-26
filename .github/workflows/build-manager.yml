@@ -88,7 +88,6 @@ jobs:
           fetch-depth: 0
 
       - name: Write key properties
-        # 直接使用目录下的 key.jks 并写入签名配置到 gradle.properties
         run: |
           {
             echo KEYSTORE_PASSWORD='000000'

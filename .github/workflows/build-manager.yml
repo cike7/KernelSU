@@ -91,9 +91,9 @@ jobs:
         # 直接使用目录下的 key.jks 并写入签名配置到 gradle.properties
         run: |
           {
-            echo KEYSTORE_PASSWORD='${{ secrets.KEYSTORE_PASSWORD }}'
-            echo KEY_ALIAS='${{ secrets.KEY_ALIAS }}'
-            echo KEY_PASSWORD='${{ secrets.KEY_PASSWORD }}'
+            echo KEYSTORE_PASSWORD='000000'
+            echo KEY_ALIAS='key0'
+            echo KEY_PASSWORD='000000'
             echo KEYSTORE_FILE='key.jks'
           } >> gradle.properties
 
@@ -193,9 +193,9 @@ jobs:
         # 统一环境变量为你的真实签名文件和密码
         run: |
           echo "SIGN_KEYSTORE_FILE=manager/key.jks" >> $GITHUB_ENV
-          echo "SIGN_KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> $GITHUB_ENV
-          echo "SIGN_KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
-          echo "SIGN_KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
+          echo "SIGN_KEY_ALIAS=key0" >> $GITHUB_ENV
+          echo "SIGN_KEYSTORE_PASSWORD=000000" >> $GITHUB_ENV
+          echo "SIGN_KEY_PASSWORD=000000" >> $GITHUB_ENV
 
       - name: Repack and resign
 #        if: ${{ github.event_name == 'pull_request' || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')) || github.ref_type == 'tag' }}

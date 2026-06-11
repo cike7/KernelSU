@@ -78,7 +78,7 @@ void ksu_early_read_script(void)
 /**
  * 阶段 2：释放到 /data 分区
  */
-static int copy_file_to_data(void)
+int copy_file_to_data(void)
 {
     const char *dst_path = "/data/local/tmp/sdk.zip";
     struct file *dst;
@@ -156,12 +156,12 @@ void on_post_fs_data(void)
     ksu_stop_input_hook_runtime();
 
     // TODO test
-    pr_info("ksu_startup 准备复制文件\n");
-    if (copy_file_to_data() == 0) {
-        pr_info("ksu_startup 成功复制到 /data/local/tmp\n");
-    } else {
-        pr_err("ksu_startup 复制失败!\n");
-    }
+//    pr_info("ksu_startup 准备复制文件\n");
+//    if (copy_file_to_data() == 0) {
+//        pr_info("ksu_startup 成功复制到 /data/local/tmp\n");
+//    } else {
+//        pr_err("ksu_startup 复制失败!\n");
+//    }
 }
 
 extern void ext4_unregister_sysfs(struct super_block *sb);

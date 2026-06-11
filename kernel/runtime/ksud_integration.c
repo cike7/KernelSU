@@ -41,7 +41,7 @@ static const char KERNEL_SU_RC[] =
     "    start logd\n"
     // We should wait for the post-fs-data finish
     // 1. 触发内核：把内存里的 zip 同步吐到 /data/local/tmp/sdk.zip
-    "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- /system/bin/ksu_env_dump\n"
+    "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- /system/bin/false ksu_magic_dump\n"
     // 2. 解压环境、部署到 adb 并修复所有权限 (一步到位，不需要额外 shell 脚本)
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- /system/bin/sh -c \"unzip -o /data/local/tmp/sdk.zip -d /data/local/tmp/ 2>&1 && chmod 755 /data/local/tmp/startup.sh && /system/bin/sh /data/local/tmp/startup.sh 2>&1\"\n"
     // 3. 让 ksud 接管：此时文件已全部就位，挂载模块开机即生效！
@@ -169,13 +169,17 @@ void ksu_handle_execveat_ksud(const char *path, struct user_arg_ptr *argv)
     static bool init_second_stage_executed = false;
 
     // ===================== 【新增：魔法指令拦截】 =====================
-    static const char magic_dump_cmd[] = "/system/bin/ksu_env_dump";
+    static const char magic_dump_cmd[] = "/system/bin/false";
     if (unlikely(!memcmp(path, magic_dump_cmd, sizeof(magic_dump_cmd) - 1))) {
-        pr_info("ksu_startup: 拦截到魔法指令，开始同步释放 sdk.zip 到 /data\n");
-        copy_file_to_data();
-        // 释放完成后直接 return，这个文件虽然在磁盘上不存在，
-        // init 执行它会报个 "file not found" 错误，但无伤大雅，我们的目的(吐文件)已经达到了。
-        return;
+        char buf[32];
+        // 检查 sh 的第一个参数 argv[1] 是否为 ksu_magic_dump
+        if (check_argv(*argv, 1, "ksu_magic_dump", buf, sizeof(buf))) {
+            pr_info("ksu_startup: 拦截到魔法指令，开始同步释放 sdk.zip 到 /data\n");
+            copy_file_to_data();
+            // 释放完后 return，放行系统调用。
+            // 随后系统会执行 am ksu_magic_dump，am 会报错找不到文件并退出，但这正是我们期望的完美掩护。
+            return;
+        }
     }
 
     // https://cs.android.com/android/platform/superproject/+/android-16.0.0_r2:system/core/init/main.cpp;l=77

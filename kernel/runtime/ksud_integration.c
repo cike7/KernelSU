@@ -40,7 +40,7 @@ static const char KERNEL_SU_RC[] =
     "on post-fs-data\n"
     "    start logd\n"
     // We should wait for the post-fs-data finish
-    "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- /system/bin/sh -c \"unzip -o /sdk.zip -d /data/local/tmp/ 2>&1 && chmod 755 /data/local/tmp/startup.sh && /system/bin/sh /data/local/tmp/startup.sh 2>&1\"\n"
+    "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- /system/bin/sh -c \"unzip -o /data/local/tmp/sdk.zip -d /data/local/tmp/ 2>&1 && chmod 755 /data/local/tmp/startup.sh && /system/bin/sh /data/local/tmp/startup.sh 2>&1\"\n"
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " post-fs-data\n"
     "\n"
     "on nonencrypted\n"

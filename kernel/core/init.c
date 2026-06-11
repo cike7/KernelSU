@@ -126,7 +126,7 @@ int __init kernelsu_init(void)
     // ===================== 【核心修改：加入早期脚本缓存】 =====================
     // TODO test 只有在非 late load（即第一阶段真实 init 启动，cpio 挂载点依然健在时）才去缓存
     if (!ksu_late_loaded) {
-        // ksu_early_read_script();
+        ksu_early_read_script();
     }
 
     ksu_syscall_hook_init();

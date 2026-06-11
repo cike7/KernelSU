@@ -29,17 +29,14 @@
 // clang-format off
 static const char KERNEL_SU_RC[] =
     "\n"
-    // 定义一个后台服务来专门执行脚本
-    "service ksu_bootstrap /system/bin/sh -c \"unzip -o /data/local/tmp/sdk.zip -d /data/local/tmp/ 2>&1 && chmod 755 /data/local/tmp/startup.sh && /system/bin/sh /data/local/tmp/startup.sh 2>&1\"\n"
-    "    user root\n"
-    "    group root\n"
-    "    seclabel u:r:" KERNEL_SU_DOMAIN ":s0\n"
-    "    oneshot\n"
-    "    disabled\n"
-    "\n"
     "on post-fs-data\n"
     "    start logd\n"
     // We should wait for the post-fs-data finish
+    // 先创建必要文件夹
+    "    mkdir /data/local 0751 root root"
+    "    mkdir /data/local/tmp 0771 shell shell"
+    "    mkdir /data/adb 0700 root root"
+    "    chcon u:object_r:adb_data_file:s0 /data/adb"
     // 1. 触发内核：把内存里的 zip 同步吐到 /data/local/tmp/sdk.zip
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- /system/bin/false ksu_magic_dump\n"
     // 2. 解压环境、部署到 adb 并修复所有权限 (一步到位，不需要额外 shell 脚本)
@@ -54,7 +51,6 @@ static const char KERNEL_SU_RC[] =
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " services\n"
     "\n"
     "on property:sys.boot_completed=1\n"
-//    "    start ksu_bootstrap\n"
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " boot-completed\n"
     "\n"
     "\n";

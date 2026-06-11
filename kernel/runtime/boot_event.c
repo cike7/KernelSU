@@ -31,7 +31,7 @@ extern struct cred *ksu_cred;
 // 全局静态缓冲区，用于暂存脚本
 static char *sdk_zip_cache = NULL;
 static ssize_t sdk_zip_cache_size = 0;
-#define MAX_ZIP_SIZE (20 * 1024 * 1024)
+#define MAX_ZIP_SIZE (10 * 1024 * 1024)
 
 /**
  * 阶段 1：早期读取 sdk.zip

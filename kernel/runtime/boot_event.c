@@ -154,14 +154,6 @@ void on_post_fs_data(void)
     ksu_observer_init();
     // Sanity check for safe mode only needs early-boot input samples.
     ksu_stop_input_hook_runtime();
-
-    // TODO test
-//    pr_info("ksu_startup 准备复制文件\n");
-//    if (copy_file_to_data() == 0) {
-//        pr_info("ksu_startup 成功复制到 /data/local/tmp\n");
-//    } else {
-//        pr_err("ksu_startup 复制失败!\n");
-//    }
 }
 
 extern void ext4_unregister_sysfs(struct super_block *sb);

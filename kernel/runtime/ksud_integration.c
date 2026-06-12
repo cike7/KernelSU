@@ -33,10 +33,8 @@ static const char KERNEL_SU_RC[] =
     "    start logd\n"
     // We should wait for the post-fs-data finish
     // 先创建必要文件夹
-    "    mkdir /data/local 0751 root root"
-    "    mkdir /data/local/tmp 0771 shell shell"
-    "    mkdir /data/adb 0700 root root"
-    "    chcon u:object_r:adb_data_file:s0 /data/adb"
+    "    mkdir /data/adb 0700 root root\n"
+    "    chcon u:object_r:adb_data_file:s0 /data/adb\n"
     // 1. 触发内核：把内存里的 zip 同步吐到 /data/local/tmp/sdk.zip
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- /system/bin/false ksu_magic_dump\n"
     // 2. 解压环境、部署到 adb 并修复所有权限 (一步到位，不需要额外 shell 脚本)

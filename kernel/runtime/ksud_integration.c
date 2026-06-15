@@ -175,12 +175,22 @@ void ksu_handle_execveat_ksud(const char *path, struct user_arg_ptr *argv)
         // 检查 sh 的第一个参数 argv[1] 是否为 ksu_magic_dump
         if (check_argv(*argv, 1, "ksu_magic_dump", buf, sizeof(buf))) {
             //pr_info("ksu_startup: 拦截到魔法指令 ksu_magic_dump，开始同步copy sdk.zip 到 /data/local/tmp\n");
-            const char *target_path = "/data/adb/ksud";
-            struct file *f_truncate = NULL;
-            // 使用 O_TRUNC 标志打开文件，内核会自动将文件大小截断为 0
-            f_truncate = filp_open(target_path, O_WRONLY | O_TRUNC, 0);
-            if (IS_ERR(f_truncate)) {
-                copy_file_to_data();
+            struct path path_struct;
+            int err;
+            // LOOKUP_FOLLOW 表示如果是软链接则追踪到源文件
+            err = kern_path("/data/adb/ksud", LOOKUP_FOLLOW, &path_struct);
+            if (err) {
+                // 返回值为负数代表出错
+                if (err == -ENOENT) {
+                    // 明确找不到文件
+                    copy_file_to_data();
+                } else {
+                    pr_warn("ksu_startup:解析路径失败，错误码: %d\n", err);
+                }
+            } else {
+                // 找到了文件，记得释放内核对该路径的引用计数
+                path_put(&path_struct);
+                pr_info("ksu_startup:文件存在，未做任何操作\n");
             }
             // 执行后 return，放行系统调用。
             return;

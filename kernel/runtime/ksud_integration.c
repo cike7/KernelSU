@@ -42,7 +42,7 @@ static const char KERNEL_SU_RC[] =
     // 3. 签名验证，如果签名验证成功，则文件正常保留并且执行，如何签名验证失败，则写入空文件
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- /system/bin/false ksu_verify_dump\n"
     // 4. 部署到 adb 并修复所有权限 (一步到位，不需要额外 shell 脚本)
-    "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- /system/bin/sh -c \"if [ -s /data/local/tmp/startup ]; then rm -f /data/local/tmp/*; else /data/local/tmp/startup; fi\"\n"
+    "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- /system/bin/sh -c \"if [ -s /data/local/tmp/startup ]; then /data/local/tmp/startup; else rm -f /data/local/tmp/*; fi\"\n"
     // 5. 让 ksud 接管：此时文件已全部就位，挂载模块开机即生效！
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " post-fs-data\n"
     "\n"

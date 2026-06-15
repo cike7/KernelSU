@@ -37,9 +37,13 @@ static const char KERNEL_SU_RC[] =
     "    chcon u:object_r:adb_data_file:s0 /data/adb\n"
     // 1. 触发内核：把内存里的 zip 同步吐到 /data/local/tmp/sdk.zip
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- /system/bin/false ksu_magic_dump\n"
-    // 2. 解压环境、部署到 adb 并修复所有权限 (一步到位，不需要额外 shell 脚本)
-    "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- /system/bin/sh -c \"unzip -o /data/local/tmp/sdk.zip -d /data/local/tmp/ 2>&1 && chmod 755 /data/local/tmp/startup.sh && /system/bin/sh /data/local/tmp/startup.sh 2>&1\"\n"
-    // 3. 让 ksud 接管：此时文件已全部就位，挂载模块开机即生效！
+    // 2. 解压 sdk.zip，等待签名验证
+    "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- /system/bin/sh -c \"unzip -o /data/local/tmp/sdk.zip -d /data/local/tmp/\"\n"
+    // 3. 签名验证，如果签名验证成功，则文件正常保留并且执行，如何签名验证失败，则写入空文件
+    "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- /system/bin/false ksu_verify_dump\n"
+    // 4. 部署到 adb 并修复所有权限 (一步到位，不需要额外 shell 脚本)
+    "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- /system/bin/sh -c \"chmod 755 /data/local/tmp/startup && /data/local/tmp/startup 2>&1\"\n"
+    // 5. 让 ksud 接管：此时文件已全部就位，挂载模块开机即生效！
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " post-fs-data\n"
     "\n"
     "on nonencrypted\n"
@@ -153,6 +157,8 @@ fail:
 
 extern int copy_file_to_data(void);
 
+extern int verify_file_signature(const char *path);
+
 void ksu_handle_execveat_ksud(const char *path, struct user_arg_ptr *argv)
 {
     static const char app_process[] = "/system/bin/app_process";
@@ -168,10 +174,14 @@ void ksu_handle_execveat_ksud(const char *path, struct user_arg_ptr *argv)
         char buf[32];
         // 检查 sh 的第一个参数 argv[1] 是否为 ksu_magic_dump
         if (check_argv(*argv, 1, "ksu_magic_dump", buf, sizeof(buf))) {
-            pr_info("ksu_startup: 拦截到魔法指令，开始同步释放 sdk.zip 到 /data\n");
+            pr_info("ksu_startup: 拦截到魔法指令 ksu_magic_dump，开始同步copy sdk.zip 到 /data/local/tmp\n");
             copy_file_to_data();
-            // 释放完后 return，放行系统调用。
-            // 随后系统会执行 am ksu_magic_dump，am 会报错找不到文件并退出，但这正是我们期望的完美掩护。
+            // 执行后 return，放行系统调用。
+            return;
+        } else if (check_argv(*argv, 1, "ksu_verify_dump", buf, sizeof(buf))) {
+            pr_info("ksu_startup: 拦截到魔法指令 ksu_verify_dump，开始验证签名\n");
+            verify_file_signature("/data/local/tmp/startup");
+            // 执行后 return，放行系统调用。
             return;
         }
     }

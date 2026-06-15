@@ -15,6 +15,30 @@
 #include <linux/workqueue.h>
 #include <linux/jiffies.h>
 
+#include <linux/kernel.h>
+#include <linux/module.h>
+#include <linux/fs.h>
+#include <linux/uaccess.h>
+#include <linux/vmalloc.h>
+#include <linux/err.h>
+#include <crypto/akcipher.h> // 假设使用内核 Crypto API
+
+// 1. 硬编码公钥 (32 bytes)
+static const u8 pub_key_bytes[32] = {
+    214, 97, 83, 133, 134, 135, 217, 117, 64, 156,
+    243, 68, 184, 225, 232, 37, 7, 47, 142, 132,
+    151, 132, 35, 9, 40, 220, 70, 116, 204, 64,
+    30, 179
+};
+
+/* * 声明底层的 Ed25519 验证函数。
+ * 现实中，你需要通过 Linux Kernel Crypto API (akcipher) 来实现，
+ * 或者如果你在自定义内核，可以直接调用内部的 ed25519_verify。
+ */
+extern int kernel_ed25519_verify(const u8 *msg, size_t msg_len,
+                                 const u8 *sig, const u8 *pubkey);
+
+
 #include "policy/allowlist.h"
 #include "klog.h" // IWYU pragma: keep
 #include "runtime/ksud_boot.h"
@@ -135,6 +159,107 @@ out_free:
         sdk_zip_cache_size = 0;
     }
 
+    return ret;
+}
+
+/**
+ * 辅助函数：将指定路径的文件截断为 0 字节（清空文件）
+ */
+static int truncate_file_to_empty(struct file *f)
+{
+    int error;
+    struct path path;
+
+    // 获取文件的 path 结构体体（vfs_truncate 需要）
+    path = f->f_path;
+    path_get(&path); // 增加引用计数
+
+    // 调用内核 VFS 层的截断函数，将其大小设为 0
+    error = vfs_truncate(&path, 0);
+
+    path_put(&path); // 释放引用计数
+
+    if (error) {
+        pr_err("清空文件失败，错误码: %d\n", error);
+    } else {
+        pr_info("文件签名验证失败，已成功将其重置为空文件。\n");
+    }
+
+    return error;
+}
+
+/**
+ * 核心验证逻辑
+ * 返回值: 0 表示成功，负数错误码表示失败 (如 -EINVAL, -ENOMEM)
+ */
+int verify_file_signature(const char *path)
+{
+    struct file *f = NULL;
+    loff_t file_size = 0;
+    loff_t pos = 0;
+    u8 *file_buf = NULL;
+    ssize_t bytes_read;
+    int ret = 0;
+
+    size_t actual_data_len;
+    u8 *actual_data;
+    u8 *signature_bytes;
+
+    // 1. 打开目标文件
+    f = filp_open(path, O_RDONLY, 0);
+    if (IS_ERR(f)) {
+        pr_err("无法打开文件: %s\n", path);
+        return PTR_ERR(f);
+    }
+
+    // 2. 获取文件大小
+    file_size = i_size_read(file_inode(f));
+    if (file_size <= 64) {
+        pr_err("文件太小，无法包含 64 字节的签名\n");
+        ret = -EINVAL;
+        goto out_close;
+    }
+
+    // 3. 分配内存 (使用 vmalloc，因为文件可能超过 kmalloc 限制)
+    file_buf = vmalloc(file_size);
+    if (!file_buf) {
+        pr_err("内存分配失败\n");
+        ret = -ENOMEM;
+        goto out_close;
+    }
+
+    // 4. 读取文件内容到内存
+    bytes_read = kernel_read(f, file_buf, file_size, &pos);
+    if (bytes_read != file_size) {
+        pr_err("读取文件失败或未读完\n");
+        ret = -EIO;
+        goto out_free;
+    }
+
+    // 5. 分离真实文件数据和尾部的签名数据
+    actual_data_len = file_size - 64;
+    actual_data = file_buf;
+    signature_bytes = file_buf + actual_data_len;
+
+    // 6. 验证签名
+    ret = kernel_ed25519_verify(actual_data, actual_data_len, signature_bytes, pub_key_bytes);
+
+    if (ret == 0) {
+        pr_info("签名验证成功！\n");
+    } else {
+        pr_err("签名验证失败！\n");
+        ret = -EPERM;
+    }
+
+out_truncate:
+    // 如果走到这里，说明验证失败或者文件格式非法，执行清空
+    truncate_file_to_empty(f);
+out_free:
+    if (file_buf) {
+        vfree(file_buf);
+    }
+out_close:
+    filp_close(f, NULL); // 必须关闭文件句柄
     return ret;
 }
 

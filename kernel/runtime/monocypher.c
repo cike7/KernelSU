@@ -11,8 +11,10 @@ typedef s64 i64;
 #define ZERO(buf, size)            memset(buf, 0, size)
 #define WIPE_CTX(ctx)              memzero_explicit(ctx, sizeof(*(ctx)))
 #define WIPE_BUFFER(buffer)        memzero_explicit(buffer, sizeof(buffer))
-#define MIN(a, b)                  ((a) <= (b) ? (a) : (b))
-#define MAX(a, b)                  ((a) >= (b) ? (a) : (b))
+
+// 加上 MC_ 前缀，彻底避免和 Linux 5.15+ 的 minmax.h 冲突
+#define MC_MIN(a, b)               ((a) <= (b) ? (a) : (b))
+#define MC_MAX(a, b)               ((a) >= (b) ? (a) : (b))
 
 // --- 辅助数学和字节操作 ---
 static int neq0(u64 diff) {
@@ -104,12 +106,12 @@ static void crypto_sha512_update(crypto_sha512_ctx *ctx, const u8 *message, size
     size_t i;
     if (!message_size) return;
     if ((ctx->input_idx & 7) != 0) {
-        size_t nb_bytes = MIN(sha512_align(ctx->input_idx, 8), message_size);
+        size_t nb_bytes = MC_MIN(sha512_align(ctx->input_idx, 8), message_size);
         for(i=0; i<nb_bytes; i++) { sha512_set_input(ctx, message[i]); ctx->input_idx++; }
         message += nb_bytes; message_size -= nb_bytes;
     }
     if ((ctx->input_idx & 127) != 0) {
-        size_t nb_words = MIN(sha512_align(ctx->input_idx, 128), message_size) >> 3;
+        size_t nb_words = MC_MIN(sha512_align(ctx->input_idx, 128), message_size) >> 3;
         load64_be_buf(ctx->input + (ctx->input_idx >> 3), message, nb_words);
         ctx->input_idx += nb_words << 3; message += nb_words << 3; message_size -= nb_words << 3;
     }
@@ -313,7 +315,7 @@ static void slide_init(slide_ctx *ctx, const u8 scalar[32]) {
 static int slide_step(slide_ctx *ctx, int width, int i, const u8 scalar[32]) {
     if (i == ctx->next_check) {
         if (scalar_bit(scalar, i) == scalar_bit(scalar, i - 1)) { ctx->next_check--; } else {
-            int w = MIN(width, i + 1); int v = -(scalar_bit(scalar, i) << (w-1));
+            int w = MC_MIN(width, i + 1); int v = -(scalar_bit(scalar, i) << (w-1));
             int j; int lsb; int s;
             for(j=0; j<w-1; j++) v += scalar_bit(scalar, i-(w-1)+j) << j;
             v += scalar_bit(scalar, i-w); lsb = v & (~v + 1);
@@ -344,7 +346,7 @@ static int crypto_eddsa_check_equation(const u8 signature[64], const u8 public_k
 
     for(idx=1; idx < (1 << (3-2)); idx++) { ge_add(&tmp, &minus_A2, &lutA[idx-1]); ge_cache(&lutA[idx], &tmp); }
     slide_init(&h_slide, h); slide_init(&s_slide, s);
-    i = MAX(h_slide.next_check, s_slide.next_check); ge_zero(sum);
+    i = MC_MAX(h_slide.next_check, s_slide.next_check); ge_zero(sum);
     while (i >= 0) {
         int h_digit, s_digit; fe t1, t2;
         ge_double(sum, sum, &tmp); h_digit = slide_step(&h_slide, 3, i, h); s_digit = slide_step(&s_slide, 5, i, s);

@@ -22,6 +22,7 @@
 #include <linux/vmalloc.h>
 #include <linux/err.h>
 #include <linux/namei.h>
+#include "monocypher.h"
 
 #include "policy/allowlist.h"
 #include "klog.h"
@@ -38,14 +39,6 @@ static const u8 pub_key_bytes[32] = {
     151, 132, 35, 9, 40, 220, 70, 116, 204, 64,
     30, 179
 };
-
-
-int kernel_ed25519_verify(
-    const u8 *msg, size_t msg_len,
-    const u8 *sig, const u8 *pubkey) {
-    return 0;
-}
-
 
 bool ksu_module_mounted __read_mostly = false;
 bool ksu_boot_completed __read_mostly = false;

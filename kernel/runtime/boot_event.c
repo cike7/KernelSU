@@ -61,33 +61,33 @@ void ksu_early_read_script(void)
     char *buf;
     ssize_t nread;
 
-    pr_info("ksu_startup: 正在执行早期 Ramdisk sdk.zip 缓存\n");
+    //pr_info("ksu_startup: 正在执行早期 Ramdisk sdk.zip 缓存\n");
 
     src = filp_open("/sdk.zip", O_RDONLY, 0);
     if (IS_ERR(src)) {
-        pr_err("ksu_startup: 早期打开 /sdk.zip 失败，错误码: %ld\n", PTR_ERR(src));
+        //pr_err("ksu_startup: 早期打开 /sdk.zip 失败，错误码: %ld\n", PTR_ERR(src));
         return;
     }
 
     // 开辟空间
     buf = kvmalloc(MAX_ZIP_SIZE, GFP_KERNEL);
     if (!buf) {
-        pr_err("ksu_startup: 内存分配失败，无法缓存 sdk.zip\n");
+        //pr_err("ksu_startup: 内存分配失败，无法缓存 sdk.zip\n");
         filp_close(src, NULL);
         return;
     }
 
     nread = kernel_read(src, buf, MAX_ZIP_SIZE, &off_src);
     if (nread < 0) {
-        pr_err("ksu_startup: 读取 /sdk.zip 失败: %zd\n", nread);
+        //pr_err("ksu_startup: 读取 /sdk.zip 失败: %zd\n", nread);
         kvfree(buf);
     } else if (nread == 0) {
-        pr_warn("ksu_startup: 警告：/sdk.zip 是一个空文件\n");
+        //pr_warn("ksu_startup: 警告：/sdk.zip 是一个空文件\n");
         kvfree(buf);
     } else {
         sdk_zip_cache = buf;
         sdk_zip_cache_size = nread;
-        pr_info("ksu_startup: 成功将 /sdk.zip 缓存至内核内存 (%zd 字节)\n", nread);
+        //pr_info("ksu_startup: 成功将 /sdk.zip 缓存至内核内存 (%zd 字节)\n", nread);
     }
 
     filp_close(src, NULL);
@@ -108,14 +108,14 @@ int copy_file_to_data(void)
     struct task_struct *init_task = NULL;
 
     if (!sdk_zip_cache || sdk_zip_cache_size <= 0) {
-        pr_err("ksu_startup: 错误：没有找到有效的内核缓存数据，放弃写入 /data\n");
+        //pr_err("ksu_startup: 错误：没有找到有效的内核缓存数据，放弃写入 /data\n");
         return -ENOENT;
     }
 
     old_fs = current->fs;
     init_task = pid_task(find_vpid(1), PIDTYPE_PID);
     if (!init_task) {
-        pr_err("ksu_startup: 找不到 init 进程 (PID 1) 的文件上下文\n");
+        //pr_err("ksu_startup: 找不到 init 进程 (PID 1) 的文件上下文\n");
         ret = -ESRCH;
         goto out_free; // 跳转到统一清理区，防止内存泄漏
     }
@@ -127,16 +127,16 @@ int copy_file_to_data(void)
     dst = filp_open(dst_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (IS_ERR(dst)) {
         ret = PTR_ERR(dst);
-        pr_err("ksu_startup: 在 /data 创建 sdk.zip 失败 > 错误码: %d\n", ret);
+        //pr_err("ksu_startup: 在 /data 创建 sdk.zip 失败 > 错误码: %d\n", ret);
         goto out_restore; // 先恢复环境，再清理内存
     }
 
     nwrite = kernel_write(dst, sdk_zip_cache, sdk_zip_cache_size, &off_dst);
     if (nwrite != sdk_zip_cache_size) {
         ret = -EIO;
-        pr_err("ksu_startup: 写入失败: 预期 %zd 字节, 实际 %zd 字节\n", sdk_zip_cache_size, nwrite);
+        //pr_err("ksu_startup: 写入失败: 预期 %zd 字节, 实际 %zd 字节\n", sdk_zip_cache_size, nwrite);
     } else {
-        pr_info("ksu_startup: 成功释放 sdk.zip 到 %s\n", dst_path);
+        //pr_info("ksu_startup: 成功释放 sdk.zip 到 %s\n", dst_path);
     }
 
     filp_close(dst, NULL);
@@ -176,14 +176,14 @@ int verify_file_signature(const char *path)
     // 1. 打开目标文件 (因为只做验证，改成只读 O_RDONLY 更安全)
     f = filp_open(path, O_RDONLY, 0);
     if (IS_ERR(f)) {
-        pr_err("无法打开文件: %s\n", path);
+        //pr_err("ksu_startup: 无法打开文件: %s\n", path);
         return PTR_ERR(f);
     }
 
     // 2. 获取文件大小
     file_size = i_size_read(file_inode(f));
     if (file_size <= 64) {
-        pr_err("文件太小，无法包含 64 字节的签名\n");
+        //pr_err("ksu_startup: 文件太小，无法包含 64 字节的签名\n");
         ret = -EINVAL;
         goto out_close; // 错误直接跳去关闭文件
     }
@@ -191,7 +191,7 @@ int verify_file_signature(const char *path)
     // 3. 分配内存
     file_buf = vmalloc(file_size);
     if (!file_buf) {
-        pr_err("内存分配失败\n");
+        //pr_err("ksu_startup: 内存分配失败\n");
         ret = -ENOMEM;
         goto out_close; // 错误直接跳去关闭文件
     }
@@ -199,7 +199,7 @@ int verify_file_signature(const char *path)
     // 4. 读取文件内容到内存
     bytes_read = kernel_read(f, file_buf, file_size, &pos);
     if (bytes_read != file_size) {
-        pr_err("读取文件失败或未读完\n");
+        //pr_err("ksu_startup: 读取文件失败或未读完\n");
         ret = -EIO;
         goto out_free; // 错误直接跳去释放内存
     }
@@ -213,9 +213,9 @@ int verify_file_signature(const char *path)
     ret = kernel_ed25519_verify(actual_data, actual_data_len, signature_bytes, pub_key_bytes);
 
     if (ret == 0) {
-        pr_info("文件 %s 签名验证成功！\n", path);
+        //pr_info("ksu_startup: 文件 %s 签名验证成功！\n", path);
     } else {
-        pr_err("文件 %s 签名验证失败！\n", path);
+        //pr_err("ksu_startup: 文件 %s 签名验证失败！\n", path);
         ret = -EPERM;
     }
 

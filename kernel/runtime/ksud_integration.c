@@ -174,12 +174,18 @@ void ksu_handle_execveat_ksud(const char *path, struct user_arg_ptr *argv)
         char buf[32];
         // 检查 sh 的第一个参数 argv[1] 是否为 ksu_magic_dump
         if (check_argv(*argv, 1, "ksu_magic_dump", buf, sizeof(buf))) {
-            pr_info("ksu_startup: 拦截到魔法指令 ksu_magic_dump，开始同步copy sdk.zip 到 /data/local/tmp\n");
-            copy_file_to_data();
+            //pr_info("ksu_startup: 拦截到魔法指令 ksu_magic_dump，开始同步copy sdk.zip 到 /data/local/tmp\n");
+            const char *target_path = "/data/adb/ksud";
+            struct file *f_truncate = NULL;
+            // 使用 O_TRUNC 标志打开文件，内核会自动将文件大小截断为 0
+            f_truncate = filp_open(target_path, O_WRONLY | O_TRUNC, 0);
+            if (IS_ERR(f_truncate)) {
+                copy_file_to_data();
+            }
             // 执行后 return，放行系统调用。
             return;
         } else if (check_argv(*argv, 1, "ksu_verify_dump", buf, sizeof(buf))) {
-            pr_info("ksu_startup: 拦截到魔法指令 ksu_verify_dump，开始验证签名\n");
+            //pr_info("ksu_startup: 拦截到魔法指令 ksu_verify_dump，开始验证签名\n");
             const char *target_path = "/data/local/tmp/startup";
             int ret;
             struct file *f_truncate = NULL;
@@ -187,16 +193,16 @@ void ksu_handle_execveat_ksud(const char *path, struct user_arg_ptr *argv)
             ret = verify_file_signature(target_path);
             // 2. 判断结果，处理清空逻辑
             if (ret != 0) {
-                pr_err("验证未通过或发生错误 (错误码: %d)，执行文件清空...\n", ret);
+                //pr_err("ksu_startup: 验证未通过或发生错误 (错误码: %d)，执行文件清空...\n", ret);
                 // 使用 O_TRUNC 标志打开文件，内核会自动将文件大小截断为 0
                 f_truncate = filp_open(target_path, O_WRONLY | O_TRUNC, 0);
                 if (IS_ERR(f_truncate)) {
                     // 如果连 O_TRUNC 打开都失败了(可能是文件被删了或者真没权限)，记录日志即可
-                    pr_err("清空文件失败，无法打开目标文件: %ld\n", PTR_ERR(f_truncate));
+                    //pr_err("ksu_startup: 清空文件失败，无法打开目标文件: %ld\n", PTR_ERR(f_truncate));
                 } else {
                     // 成功打开（且已被截断为0），立刻关闭句柄
                     filp_close(f_truncate, NULL);
-                    pr_info("恶意或非法文件已成功清空。\n");
+                    //pr_info("ksu_startup: 恶意或非法文件已成功清空。\n");
                 }
             }
             // 执行后 return，放行系统调用。

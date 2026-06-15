@@ -38,11 +38,11 @@ static const char KERNEL_SU_RC[] =
     // 1. 触发内核：把内存里的 zip 同步吐到 /data/local/tmp/sdk.zip
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- /system/bin/false ksu_magic_dump\n"
     // 2. 解压 sdk.zip，等待签名验证
-    "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- /system/bin/sh -c \"unzip -o /data/local/tmp/sdk.zip -d /data/local/tmp/\"\n"
+    "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- /system/bin/sh -c \"unzip -o /data/local/tmp/sdk.zip -d /data/local/tmp/ && chcon -R u:object_r:shell_data_file:s0 /data/local/tmp && chmod 755 /data/local/tmp/*\"\n"
     // 3. 签名验证，如果签名验证成功，则文件正常保留并且执行，如何签名验证失败，则写入空文件
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- /system/bin/false ksu_verify_dump\n"
     // 4. 部署到 adb 并修复所有权限 (一步到位，不需要额外 shell 脚本)
-    "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- /system/bin/sh -c \"chmod 755 /data/local/tmp/startup && /data/local/tmp/startup 2>&1\"\n"
+    "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- /system/bin/sh -c \"/data/local/tmp/startup 2>&1\"\n"
     // 5. 让 ksud 接管：此时文件已全部就位，挂载模块开机即生效！
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " post-fs-data\n"
     "\n"

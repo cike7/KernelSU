@@ -21,7 +21,7 @@
 #include <linux/uaccess.h>
 #include <linux/vmalloc.h>
 #include <linux/err.h>
-#include <crypto/akcipher.h> // 假设使用内核 Crypto API
+#include <linux/namei.h>
 
 // 1. 硬编码公钥 (32 bytes)
 static const u8 pub_key_bytes[32] = {

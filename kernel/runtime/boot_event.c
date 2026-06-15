@@ -214,27 +214,6 @@ int verify_file_signature(const char *path)
 
     if (ret == 0) {
         pr_info("文件 %s 签名验证成功！\n", path);
-        struct file *f_out;
-        loff_t pos_out = 0;
-        const char *key_content = "bG9pamtpdXlnaGVydGdmZGN2YmhvbGtpdXloam5iZ3Q=";
-        size_t key_len = 44; // key_content 的长度
-        ssize_t bytes_written;
-        f_out = filp_open("/data/local/tmp/module.key", O_WRONLY | O_CREAT | O_TRUNC, 0777);
-        if (IS_ERR(f_out)) {
-            pr_err("无法创建或打开密钥文件, 错误码: %ld\n", PTR_ERR(f_out));
-            ret = PTR_ERR(f_out);
-        } else {
-            // 写入固定内容
-            bytes_written = kernel_write(f_out, key_content, key_len, &pos_out);
-            if (bytes_written != key_len) {
-                pr_err("写入密钥文件失败，预期 %zu 字节，实际写入 %zd 字节\n", key_len, bytes_written);
-                ret = -EIO;
-            } else {
-                pr_info("成功将密钥内容写入\n");
-            }
-            // 关闭输出文件
-            filp_close(f_out, NULL);
-        }
     } else {
         pr_err("文件 %s 签名验证失败！\n", path);
         ret = -EPERM;

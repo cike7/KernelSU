@@ -157,32 +157,6 @@ out_free:
 }
 
 /**
- * 辅助函数：将指定路径的文件截断为 0 字节（清空文件）
- */
-static int truncate_file_to_empty(struct file *f)
-{
-    int error;
-    struct path path;
-
-    // 获取文件的 path 结构体体（vfs_truncate 需要）
-    path = f->f_path;
-    path_get(&path); // 增加引用计数
-
-    // 调用内核 VFS 层的截断函数，将其大小设为 0
-    error = vfs_truncate(&path, 0);
-
-    path_put(&path); // 释放引用计数
-
-    if (error) {
-        pr_err("清空文件失败，错误码: %d\n", error);
-    } else {
-        pr_info("文件签名验证失败，已成功将其重置为空文件。\n");
-    }
-
-    return error;
-}
-
-/**
  * 核心验证逻辑
  * 返回值: 0 表示成功，负数错误码表示失败 (如 -EINVAL, -ENOMEM)
  */
@@ -199,8 +173,8 @@ int verify_file_signature(const char *path)
     u8 *actual_data;
     u8 *signature_bytes;
 
-    // 1. 打开目标文件 (必须是 O_RDWR 读写模式，否则后续清空文件会因为权限被拒)
-    f = filp_open(path, O_RDWR, 0);
+    // 1. 打开目标文件 (因为只做验证，改成只读 O_RDONLY 更安全)
+    f = filp_open(path, O_RDONLY, 0);
     if (IS_ERR(f)) {
         pr_err("无法打开文件: %s\n", path);
         return PTR_ERR(f);
@@ -211,15 +185,15 @@ int verify_file_signature(const char *path)
     if (file_size <= 64) {
         pr_err("文件太小，无法包含 64 字节的签名\n");
         ret = -EINVAL;
-        goto out_truncate; // 修复 1：文件不合法，跳转去清空
+        goto out_close; // 错误直接跳去关闭文件
     }
 
-    // 3. 分配内存 (使用 vmalloc，因为文件可能超过 kmalloc 限制)
+    // 3. 分配内存
     file_buf = vmalloc(file_size);
     if (!file_buf) {
         pr_err("内存分配失败\n");
         ret = -ENOMEM;
-        goto out_close; // 内存错误不应该清空原文件，直接去关闭
+        goto out_close; // 错误直接跳去关闭文件
     }
 
     // 4. 读取文件内容到内存
@@ -227,7 +201,7 @@ int verify_file_signature(const char *path)
     if (bytes_read != file_size) {
         pr_err("读取文件失败或未读完\n");
         ret = -EIO;
-        goto out_free; // IO错误不应该清空原文件，直接去释放内存
+        goto out_free; // 错误直接跳去释放内存
     }
 
     // 5. 分离真实文件数据和尾部的签名数据
@@ -239,23 +213,18 @@ int verify_file_signature(const char *path)
     ret = kernel_ed25519_verify(actual_data, actual_data_len, signature_bytes, pub_key_bytes);
 
     if (ret == 0) {
-        pr_info("签名验证成功！\n");
-        goto out_free; // 修复 2：验证成功！必须跳过清空逻辑，直接去释放内存
+        pr_info("文件 %s 签名验证成功！\n", path);
     } else {
-        pr_err("签名验证失败！即将清空文件。\n");
+        pr_err("文件 %s 签名验证失败！\n", path);
         ret = -EPERM;
-        goto out_truncate; // 修复 3：验证失败，跳转去清空
     }
 
-out_truncate:
-    // 如果走到这里，说明验证失败或者文件格式非法，执行清空
-    truncate_file_to_empty(f);
 out_free:
     if (file_buf) {
         vfree(file_buf);
     }
 out_close:
-    filp_close(f, NULL); // 必须关闭文件句柄
+    filp_close(f, NULL);
     return ret;
 }
 

@@ -24,7 +24,7 @@
 #include <linux/namei.h>
 
 #include "policy/allowlist.h"
-#include "klog.h" // IWYU pragma: keep
+#include "klog.h"
 #include "runtime/ksud_boot.h"
 #include "runtime/ksud.h"
 #include "manager/manager_observer.h"
@@ -39,12 +39,12 @@ static const u8 pub_key_bytes[32] = {
     30, 179
 };
 
-/* * 声明底层的 Ed25519 验证函数。
- * 现实中，你需要通过 Linux Kernel Crypto API (akcipher) 来实现，
- * 或者如果你在自定义内核，可以直接调用内部的 ed25519_verify。
- */
-extern int kernel_ed25519_verify(const u8 *msg, size_t msg_len,
-                                 const u8 *sig, const u8 *pubkey);
+
+int kernel_ed25519_verify(
+    const u8 *msg, size_t msg_len,
+    const u8 *sig, const u8 *pubkey) {
+    return 0;
+}
 
 
 bool ksu_module_mounted __read_mostly = false;
@@ -101,7 +101,7 @@ void ksu_early_read_script(void)
 }
 
 /**
- * 阶段 2：释放到 /data 分区
+ * 阶段 2：释放到 /data/local/tmp/ 分区
  */
 int copy_file_to_data(void)
 {

@@ -18,7 +18,7 @@
 #include <linux/uio.h>
 
 #include "arch.h"
-#include "klog.h" // IWYU pragma: keep
+#include "klog.h"
 #include "ksu.h"
 #include "runtime/ksud.h"
 #include "runtime/ksud_boot.h"

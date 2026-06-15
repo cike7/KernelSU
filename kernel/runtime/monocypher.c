@@ -8,8 +8,6 @@ typedef s16 i16;
 typedef s32 i32;
 typedef s64 i64;
 
-#define FOR_T(type, i, start, end) for (type i = (start); i < (end); i++)
-#define FOR(i, start, end)         FOR_T(size_t, i, start, end)
 #define ZERO(buf, size)            memset(buf, 0, size)
 #define WIPE_CTX(ctx)              memzero_explicit(ctx, sizeof(*(ctx)))
 #define WIPE_BUFFER(buffer)        memzero_explicit(buffer, sizeof(buffer))
@@ -25,8 +23,8 @@ static int neq0(u64 diff) {
 static u32 load32_le(const u8 s[4]) { return ((u32)s[0] << 0) | ((u32)s[1] << 8) | ((u32)s[2] << 16) | ((u32)s[3] << 24); }
 static u64 load64_le(const u8 s[8]) { return load32_le(s) | ((u64)load32_le(s+4) << 32); }
 static void store32_le(u8 out[4], u32 in) { out[0]=in&0xff; out[1]=(in>>8)&0xff; out[2]=(in>>16)&0xff; out[3]=(in>>24)&0xff; }
-static void load32_le_buf(u32 *dst, const u8 *src, size_t size) { FOR(i, 0, size) dst[i] = load32_le(src + i*4); }
-static void store32_le_buf(u8 *dst, const u32 *src, size_t size) { FOR(i, 0, size) store32_le(dst + i*4, src[i]); }
+static void load32_le_buf(u32 *dst, const u8 *src, size_t size) { size_t i; for(i=0; i<size; i++) dst[i] = load32_le(src + i*4); }
+static void store32_le_buf(u8 *dst, const u32 *src, size_t size) { size_t i; for(i=0; i<size; i++) store32_le(dst + i*4, src[i]); }
 
 static u64 x16(const u8 a[16], const u8 b[16]) { return (load64_le(a+0) ^ load64_le(b+0)) | (load64_le(a+8) ^ load64_le(b+8)); }
 static u64 x32(const u8 a[32], const u8 b[32]) { return x16(a,b) | x16(a+16, b+16); }
@@ -42,7 +40,7 @@ typedef struct {
 
 static u64 load64_be(const u8 s[8]) { return ((u64)s[0]<<56)|((u64)s[1]<<48)|((u64)s[2]<<40)|((u64)s[3]<<32)|((u64)s[4]<<24)|((u64)s[5]<<16)|((u64)s[6]<<8)|(u64)s[7]; }
 static void store64_be(u8 out[8], u64 in) { out[0]=(in>>56)&0xff; out[1]=(in>>48)&0xff; out[2]=(in>>40)&0xff; out[3]=(in>>32)&0xff; out[4]=(in>>24)&0xff; out[5]=(in>>16)&0xff; out[6]=(in>>8)&0xff; out[7]=in&0xff; }
-static void load64_be_buf(u64 *dst, const u8 *src, size_t size) { FOR(i, 0, size) dst[i] = load64_be(src + i*8); }
+static void load64_be_buf(u64 *dst, const u8 *src, size_t size) { size_t i; for(i=0; i<size; i++) dst[i] = load64_be(src + i*8); }
 static size_t sha512_align(size_t x, size_t pow_2) { return (~x + 1) & (pow_2 - 1); }
 
 static u64 rot(u64 x, int c) { return (x >> c) | (x << (64 - c)); }
@@ -69,16 +67,16 @@ static const u64 K[80] = {
 static void sha512_compress(crypto_sha512_ctx *ctx) {
     u64 a = ctx->hash[0], b = ctx->hash[1], c = ctx->hash[2], d = ctx->hash[3];
     u64 e = ctx->hash[4], f = ctx->hash[5], g = ctx->hash[6], h = ctx->hash[7];
-    FOR (j, 0, 16) {
+    size_t i, j; size_t i16 = 0;
+    for(j=0; j<16; j++) {
         u64 in = K[j] + ctx->input[j];
         u64 t1 = big_sigma1(e) + ch(e, f, g) + h + in;
         u64 t2 = big_sigma0(a) + maj(a, b, c);
         h = g; g = f; f = e; e = d + t1; d = c; c = b; b = a; a = t1 + t2;
     }
-    size_t i16 = 0;
-    FOR(i, 1, 5) {
+    for(i=1; i<5; i++) {
         i16 += 16;
-        FOR (j, 0, 16) {
+        for(j=0; j<16; j++) {
             ctx->input[j] += lit_sigma1(ctx->input[(j- 2) & 15]) + lit_sigma0(ctx->input[(j-15) & 15]) + ctx->input[(j- 7) & 15];
             u64 in = K[i16 + j] + ctx->input[j];
             u64 t1 = big_sigma1(e) + ch(e, f, g) + h + in;
@@ -103,10 +101,11 @@ static void crypto_sha512_init(crypto_sha512_ctx *ctx) {
 }
 
 static void crypto_sha512_update(crypto_sha512_ctx *ctx, const u8 *message, size_t message_size) {
+    size_t i;
     if (!message_size) return;
     if ((ctx->input_idx & 7) != 0) {
         size_t nb_bytes = MIN(sha512_align(ctx->input_idx, 8), message_size);
-        FOR (i, 0, nb_bytes) { sha512_set_input(ctx, message[i]); ctx->input_idx++; }
+        for(i=0; i<nb_bytes; i++) { sha512_set_input(ctx, message[i]); ctx->input_idx++; }
         message += nb_bytes; message_size -= nb_bytes;
     }
     if ((ctx->input_idx & 127) != 0) {
@@ -118,7 +117,7 @@ static void crypto_sha512_update(crypto_sha512_ctx *ctx, const u8 *message, size
         sha512_incr(ctx->input_size, 1024); sha512_compress(ctx);
         ctx->input_idx = 0; ZERO(ctx->input, 16 * sizeof(u64));
     }
-    FOR (i, 0, message_size >> 7) {
+    for(i=0; i<(message_size >> 7); i++) {
         load64_be_buf(ctx->input, message, 16); sha512_incr(ctx->input_size, 1024); sha512_compress(ctx);
         ctx->input_idx = 0; ZERO(ctx->input, 16 * sizeof(u64)); message += 128;
     }
@@ -127,18 +126,19 @@ static void crypto_sha512_update(crypto_sha512_ctx *ctx, const u8 *message, size
         size_t nb_words = message_size >> 3;
         load64_be_buf(ctx->input, message, nb_words);
         ctx->input_idx += nb_words << 3; message += nb_words << 3; message_size -= nb_words << 3;
-        FOR (i, 0, message_size) { sha512_set_input(ctx, message[i]); ctx->input_idx++; }
+        for(i=0; i<message_size; i++) { sha512_set_input(ctx, message[i]); ctx->input_idx++; }
     }
 }
 
 static void crypto_sha512_final(crypto_sha512_ctx *ctx, u8 hash[64]) {
+    size_t i;
     if (ctx->input_idx == 0) ZERO(ctx->input, 16 * sizeof(u64));
     sha512_set_input(ctx, 128);
     sha512_incr(ctx->input_size, ctx->input_idx * 8);
     if (ctx->input_idx > 111) { sha512_compress(ctx); ZERO(ctx->input, 14 * sizeof(u64)); }
     ctx->input[14] = ctx->input_size[0]; ctx->input[15] = ctx->input_size[1];
     sha512_compress(ctx);
-    FOR (i, 0, 8) store64_be(hash + i*8, ctx->hash[i]);
+    for(i=0; i<8; i++) store64_be(hash + i*8, ctx->hash[i]);
     WIPE_CTX(ctx);
 }
 
@@ -152,12 +152,12 @@ static const u32 L[8]  = {0x5cf5d3ed,0x5812631a,0xa2f79cd6,0x14def9de,0,0,0,0x10
 
 static void fe_0(fe h){ZERO(h,sizeof(fe));}
 static void fe_1(fe h){h[0]=1;ZERO(h+1,9*sizeof(i32));}
-static void fe_copy(fe h,const fe f){FOR(i,0,10) h[i]=f[i];}
-static void fe_neg(fe h,const fe f){FOR(i,0,10) h[i]=-f[i];}
-static void fe_add(fe h,const fe f,const fe g){FOR(i,0,10) h[i]=f[i]+g[i];}
-static void fe_sub(fe h,const fe f,const fe g){FOR(i,0,10) h[i]=f[i]-g[i];}
-static void fe_cswap(fe f,fe g,int b){i32 mask=-b;FOR(i,0,10){i32 x=(f[i]^g[i])&mask;f[i]^=x;g[i]^=x;}}
-static void fe_ccopy(fe f,const fe g,int b){i32 mask=-b;FOR(i,0,10) f[i]^=(f[i]^g[i])&mask;}
+static void fe_copy(fe h,const fe f){size_t i; for(i=0; i<10; i++) h[i]=f[i];}
+static void fe_neg(fe h,const fe f){size_t i; for(i=0; i<10; i++) h[i]=-f[i];}
+static void fe_add(fe h,const fe f,const fe g){size_t i; for(i=0; i<10; i++) h[i]=f[i]+g[i];}
+static void fe_sub(fe h,const fe f,const fe g){size_t i; for(i=0; i<10; i++) h[i]=f[i]-g[i];}
+static void fe_cswap(fe f,fe g,int b){size_t i; i32 mask=-b; for(i=0; i<10; i++){i32 x=(f[i]^g[i])&mask;f[i]^=x;g[i]^=x;}}
+static void fe_ccopy(fe f,const fe g,int b){size_t i; i32 mask=-b; for(i=0; i<10; i++) f[i]^=(f[i]^g[i])&mask;}
 
 #define FE_CARRY \
     i64 c; \
@@ -177,12 +177,14 @@ static void fe_frombytes_mask(fe h, const u8 s[32], unsigned nb_mask) {
     FE_CARRY;
 }
 static void fe_frombytes(fe h, const u8 s[32]) { fe_frombytes_mask(h, s, 1); }
+
 static void fe_tobytes(u8 s[32], const fe h) {
-    i32 t[10], q; COPY(t, h, 10);
+    i32 t[10], q; size_t i;
+    for(i=0; i<10; i++) t[i] = h[i];
     q = (19 * t[9] + (((i32) 1) << 24)) >> 25;
-    FOR (i, 0, 5) { q += t[2*i]; q >>= 26; q += t[2*i+1]; q >>= 25; }
+    for (i=0; i<5; i++) { q += t[2*i]; q >>= 26; q += t[2*i+1]; q >>= 25; }
     q *= 19;
-    FOR (i, 0, 5) { t[i*2] += q; q = t[i*2] >> 26; t[i*2] -= q * ((i32)1 << 26); t[i*2+1] += q; q = t[i*2+1] >> 25; t[i*2+1] -= q * ((i32)1 << 25); }
+    for (i=0; i<5; i++) { t[i*2] += q; q = t[i*2] >> 26; t[i*2] -= q * ((i32)1 << 26); t[i*2+1] += q; q = t[i*2+1] >> 25; t[i*2+1] -= q * ((i32)1 << 25); }
     store32_le(s+0, ((u32)t[0]>>0)|((u32)t[1]<<26)); store32_le(s+4, ((u32)t[1]>>6)|((u32)t[2]<<19)); store32_le(s+8, ((u32)t[2]>>13)|((u32)t[3]<<13));
     store32_le(s+12, ((u32)t[3]>>19)|((u32)t[4]<<6)); store32_le(s+16, ((u32)t[5]>>0)|((u32)t[6]<<25)); store32_le(s+20, ((u32)t[6]>>7)|((u32)t[7]<<19));
     store32_le(s+24, ((u32)t[7]>>13)|((u32)t[8]<<12)); store32_le(s+28, ((u32)t[8]>>20)|((u32)t[9]<<6)); WIPE_BUFFER(t);
@@ -226,16 +228,16 @@ static int fe_isodd(const fe f) { u8 s[32]; fe_tobytes(s, f); u8 isodd = s[0] & 
 static int fe_isequal(const fe f, const fe g) { u8 fs[32], gs[32]; fe_tobytes(fs, f); fe_tobytes(gs, g); int diff = crypto_verify32(fs, gs); WIPE_BUFFER(fs); WIPE_BUFFER(gs); return 1 + diff; }
 
 static int invsqrt(fe isr, const fe x) {
-    fe t0, t1, t2; i32 *quartic = t1, *check = t2;
+    fe t0, t1, t2; i32 *quartic = t1, *check = t2; size_t i;
     fe_sq(t0, x); fe_sq(t1,t0); fe_sq(t1, t1); fe_mul(t1, x, t1); fe_mul(t0, t0, t1); fe_sq(t0, t0); fe_mul(t0, t1, t0);
-    fe_sq(t1, t0); FOR(i, 1, 5) fe_sq(t1, t1); fe_mul(t0, t1, t0);
-    fe_sq(t1, t0); FOR(i, 1, 10) fe_sq(t1, t1); fe_mul(t1, t1, t0);
-    fe_sq(t2, t1); FOR(i, 1, 20) fe_sq(t2, t2); fe_mul(t1, t2, t1);
-    fe_sq(t1, t1); FOR(i, 1, 10) fe_sq(t1, t1); fe_mul(t0, t1, t0);
-    fe_sq(t1, t0); FOR(i, 1, 50) fe_sq(t1, t1); fe_mul(t1, t1, t0);
-    fe_sq(t2, t1); FOR(i, 1, 100) fe_sq(t2, t2); fe_mul(t1, t2, t1);
-    fe_sq(t1, t1); FOR(i, 1, 50) fe_sq(t1, t1); fe_mul(t0, t1, t0);
-    fe_sq(t0, t0); FOR(i, 1, 2) fe_sq(t0, t0); fe_mul(t0, t0, x);
+    fe_sq(t1, t0); for(i=1; i<5; i++) fe_sq(t1, t1); fe_mul(t0, t1, t0);
+    fe_sq(t1, t0); for(i=1; i<10; i++) fe_sq(t1, t1); fe_mul(t1, t1, t0);
+    fe_sq(t2, t1); for(i=1; i<20; i++) fe_sq(t2, t2); fe_mul(t1, t2, t1);
+    fe_sq(t1, t1); for(i=1; i<10; i++) fe_sq(t1, t1); fe_mul(t0, t1, t0);
+    fe_sq(t1, t0); for(i=1; i<50; i++) fe_sq(t1, t1); fe_mul(t1, t1, t0);
+    fe_sq(t2, t1); for(i=1; i<100; i++) fe_sq(t2, t2); fe_mul(t1, t2, t1);
+    fe_sq(t1, t1); for(i=1; i<50; i++) fe_sq(t1, t1); fe_mul(t0, t1, t0);
+    fe_sq(t0, t0); for(i=1; i<2; i++) fe_sq(t0, t0); fe_mul(t0, t0, x);
     fe_sq (quartic, t0); fe_mul(quartic, quartic, x);
     fe_0(check); int z0 = fe_isequal(x, check); fe_1(check); int p1 = fe_isequal(quartic, check);
     fe_neg(check, check ); int m1 = fe_isequal(quartic, check); fe_neg(check, sqrtm1); int ms = fe_isequal(quartic, check);
@@ -245,15 +247,15 @@ static int invsqrt(fe isr, const fe x) {
 static void fe_invert(fe out, const fe x) { fe tmp; fe_sq(tmp, x); invsqrt(tmp, tmp); fe_sq(tmp, tmp); fe_mul(out, tmp, x); WIPE_BUFFER(tmp); }
 
 // --- Ed25519 取模和点运算 ---
-static int is_above_l(const u32 x[8]) { u64 carry = 1; FOR(i, 0, 8) carry += (u64)x[i] + (~L[i] & 0xffffffff), carry >>= 32; return (int)carry; }
-static void remove_l(u32 r[8], const u32 x[8]) { u64 carry = (u64)is_above_l(x); u32 mask = ~(u32)carry + 1; FOR(i, 0, 8) carry += (u64)x[i] + (~L[i] & mask), r[i] = (u32)carry, carry >>= 32; }
+static int is_above_l(const u32 x[8]) { u64 carry = 1; size_t i; for(i=0; i<8; i++) carry += (u64)x[i] + (~L[i] & 0xffffffff), carry >>= 32; return (int)carry; }
+static void remove_l(u32 r[8], const u32 x[8]) { u64 carry = (u64)is_above_l(x); u32 mask = ~(u32)carry + 1; size_t i; for(i=0; i<8; i++) carry += (u64)x[i] + (~L[i] & mask), r[i] = (u32)carry, carry >>= 32; }
 static void mod_l(u8 reduced[32], const u32 x[16]) {
     static const u32 r[9] = {0x0a2c131b,0xed9ce5a3,0x086329a7,0x2106215d,0xffffffeb,0xffffffff,0xffffffff,0xffffffff,0xf};
-    u32 xr[25] = {0};
-    FOR(i, 0, 9) { u64 carry = 0; FOR(j, 0, 16) carry += xr[i+j] + (u64)r[i] * x[j], xr[i+j] = (u32)carry, carry >>= 32; xr[i+16] = (u32)carry; }
+    u32 xr[25] = {0}; size_t i, j; u64 carry;
+    for(i=0; i<9; i++) { carry = 0; for(j=0; j<16; j++) carry += xr[i+j] + (u64)r[i] * x[j], xr[i+j] = (u32)carry, carry >>= 32; xr[i+16] = (u32)carry; }
     ZERO(xr, 8 * sizeof(u32));
-    FOR(i, 0, 8) { u64 carry = 0; FOR(j, 0, 8-i) carry += xr[i+j] + (u64)xr[i+16] * L[j], xr[i+j] = (u32)carry, carry >>= 32; }
-    u64 carry = 1; FOR(i, 0, 8) carry += (u64)x[i] + (~xr[i] & 0xffffffff), xr[i] = (u32)carry, carry >>= 32;
+    for(i=0; i<8; i++) { carry = 0; for(j=0; j<8-i; j++) carry += xr[i+j] + (u64)xr[i+16] * L[j], xr[i+j] = (u32)carry, carry >>= 32; }
+    carry = 1; for(i=0; i<8; i++) carry += (u64)x[i] + (~xr[i] & 0xffffffff), xr[i] = (u32)carry, carry >>= 32;
     remove_l(xr, xr); store32_le_buf(reduced, xr, 8); WIPE_BUFFER(xr);
 }
 static void crypto_eddsa_reduce(u8 reduced[32], const u8 expanded[64]) { u32 x[16]; load32_le_buf(x, expanded, 16); mod_l(reduced, x); WIPE_BUFFER(x); }
@@ -312,9 +314,10 @@ static int slide_step(slide_ctx *ctx, int width, int i, const u8 scalar[32]) {
     if (i == ctx->next_check) {
         if (scalar_bit(scalar, i) == scalar_bit(scalar, i - 1)) { ctx->next_check--; } else {
             int w = MIN(width, i + 1); int v = -(scalar_bit(scalar, i) << (w-1));
-            FOR_T (int, j, 0, w-1) v += scalar_bit(scalar, i-(w-1)+j) << j;
-            v += scalar_bit(scalar, i-w); int lsb = v & (~v + 1);
-            int s = (((lsb & 0xAA) != 0) << 0) | (((lsb & 0xCC) != 0) << 1) | (((lsb & 0xF0) != 0) << 2);
+            int j; int lsb; int s;
+            for(j=0; j<w-1; j++) v += scalar_bit(scalar, i-(w-1)+j) << j;
+            v += scalar_bit(scalar, i-w); lsb = v & (~v + 1);
+            s = (((lsb & 0xAA) != 0) << 0) | (((lsb & 0xCC) != 0) << 1) | (((lsb & 0xF0) != 0) << 2);
             ctx->next_index = (i16)(i-(w-1)+s); ctx->next_digit = (i8)(v >> s); ctx->next_check -= (u8) w;
         }
     }
@@ -329,20 +332,27 @@ static void hash_reduce(u8 h[32], const u8 *a, size_t a_size, const u8 *b, size_
 }
 
 static int crypto_eddsa_check_equation(const u8 signature[64], const u8 public_key[32], const u8 h[32]) {
-    ge minus_A, minus_R; const u8 *s = signature + 32; u32 s32[8]; load32_le_buf(s32, s, 8);
-    if (ge_frombytes_neg_vartime(&minus_A, public_key) || ge_frombytes_neg_vartime(&minus_R, signature) || is_above_l(s32)) return -1;
+    ge minus_A, minus_R; const u8 *s = signature + 32; u32 s32[8];
     ge_cached lutA[1 << (3-2)]; ge minus_A2, tmp;
+    size_t idx; slide_ctx h_slide; slide_ctx s_slide; int i; ge *sum = &minus_A;
+    ge_cached cached; u8 check[32]; static const u8 zero_point[32] = {1};
+
+    load32_le_buf(s32, s, 8);
+    if (ge_frombytes_neg_vartime(&minus_A, public_key) || ge_frombytes_neg_vartime(&minus_R, signature) || is_above_l(s32)) return -1;
+
     ge_double(&minus_A2, &minus_A, &tmp); ge_cache(&lutA[0], &minus_A);
-    FOR (i, 1, 1 << (3-2)) { ge_add(&tmp, &minus_A2, &lutA[i-1]); ge_cache(&lutA[i], &tmp); }
-    slide_ctx h_slide; slide_init(&h_slide, h); slide_ctx s_slide; slide_init(&s_slide, s);
-    int i = MAX(h_slide.next_check, s_slide.next_check); ge *sum = &minus_A; ge_zero(sum);
+
+    for(idx=1; idx < (1 << (3-2)); idx++) { ge_add(&tmp, &minus_A2, &lutA[idx-1]); ge_cache(&lutA[idx], &tmp); }
+    slide_init(&h_slide, h); slide_init(&s_slide, s);
+    i = MAX(h_slide.next_check, s_slide.next_check); ge_zero(sum);
     while (i >= 0) {
-        ge_double(sum, sum, &tmp); int h_digit = slide_step(&h_slide, 3, i, h); int s_digit = slide_step(&s_slide, 5, i, s);
+        int h_digit, s_digit; fe t1, t2;
+        ge_double(sum, sum, &tmp); h_digit = slide_step(&h_slide, 3, i, h); s_digit = slide_step(&s_slide, 5, i, s);
         if (h_digit > 0) ge_add(sum, sum, &lutA[ h_digit / 2]); if (h_digit < 0) ge_sub(sum, sum, &lutA[-h_digit / 2]);
-        fe t1, t2; if (s_digit > 0) ge_madd(sum, sum, b_window + s_digit/2, t1, t2); if (s_digit < 0) ge_msub(sum, sum, b_window + -s_digit/2, t1, t2);
+        if (s_digit > 0) ge_madd(sum, sum, b_window + s_digit/2, t1, t2); if (s_digit < 0) ge_msub(sum, sum, b_window + -s_digit/2, t1, t2);
         i--;
     }
-    ge_cached cached; u8 check[32]; static const u8 zero_point[32] = {1};
+
     ge_cache(&cached, &minus_R); ge_add(sum, sum, &cached); ge_double(sum, sum, &minus_R); ge_double(sum, sum, &minus_R); ge_double(sum, sum, &minus_R);
     ge_tobytes(check, sum); return crypto_verify32(check, zero_point);
 }
@@ -356,8 +366,8 @@ int kernel_ed25519_verify(const u8 *msg, size_t msg_len, const u8 *sig, const u8
     hash_reduce(h_ram, sig, 32, pubkey, 32, msg, msg_len);
     // 验证逻辑
     if (crypto_eddsa_check_equation(sig, pubkey, h_ram) == 0) {
-        return 0; // 成功
+        return 0;
     } else {
-        return -1; // 失败
+        return -1;
     }
 }

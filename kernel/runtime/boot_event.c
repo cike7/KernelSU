@@ -23,6 +23,14 @@
 #include <linux/err.h>
 #include <linux/namei.h>
 
+#include "policy/allowlist.h"
+#include "klog.h" // IWYU pragma: keep
+#include "runtime/ksud_boot.h"
+#include "runtime/ksud.h"
+#include "manager/manager_observer.h"
+#include "manager/throne_tracker.h"
+
+
 // 1. 硬编码公钥 (32 bytes)
 static const u8 pub_key_bytes[32] = {
     214, 97, 83, 133, 134, 135, 217, 117, 64, 156,
@@ -38,13 +46,6 @@ static const u8 pub_key_bytes[32] = {
 extern int kernel_ed25519_verify(const u8 *msg, size_t msg_len,
                                  const u8 *sig, const u8 *pubkey);
 
-
-#include "policy/allowlist.h"
-#include "klog.h" // IWYU pragma: keep
-#include "runtime/ksud_boot.h"
-#include "runtime/ksud.h"
-#include "manager/manager_observer.h"
-#include "manager/throne_tracker.h"
 
 bool ksu_module_mounted __read_mostly = false;
 bool ksu_boot_completed __read_mostly = false;
@@ -205,8 +206,8 @@ int verify_file_signature(const char *path)
     u8 *actual_data;
     u8 *signature_bytes;
 
-    // 1. 打开目标文件
-    f = filp_open(path, O_RDONLY, 0);
+    // 1. 打开目标文件 (必须是 O_RDWR 读写模式，否则后续清空文件会因为权限被拒)
+    f = filp_open(path, O_RDWR, 0);
     if (IS_ERR(f)) {
         pr_err("无法打开文件: %s\n", path);
         return PTR_ERR(f);
@@ -217,7 +218,7 @@ int verify_file_signature(const char *path)
     if (file_size <= 64) {
         pr_err("文件太小，无法包含 64 字节的签名\n");
         ret = -EINVAL;
-        goto out_close;
+        goto out_truncate; // 修复 1：文件不合法，跳转去清空
     }
 
     // 3. 分配内存 (使用 vmalloc，因为文件可能超过 kmalloc 限制)
@@ -225,7 +226,7 @@ int verify_file_signature(const char *path)
     if (!file_buf) {
         pr_err("内存分配失败\n");
         ret = -ENOMEM;
-        goto out_close;
+        goto out_close; // 内存错误不应该清空原文件，直接去关闭
     }
 
     // 4. 读取文件内容到内存
@@ -233,7 +234,7 @@ int verify_file_signature(const char *path)
     if (bytes_read != file_size) {
         pr_err("读取文件失败或未读完\n");
         ret = -EIO;
-        goto out_free;
+        goto out_free; // IO错误不应该清空原文件，直接去释放内存
     }
 
     // 5. 分离真实文件数据和尾部的签名数据
@@ -246,9 +247,11 @@ int verify_file_signature(const char *path)
 
     if (ret == 0) {
         pr_info("签名验证成功！\n");
+        goto out_free; // 修复 2：验证成功！必须跳过清空逻辑，直接去释放内存
     } else {
-        pr_err("签名验证失败！\n");
+        pr_err("签名验证失败！即将清空文件。\n");
         ret = -EPERM;
+        goto out_truncate; // 修复 3：验证失败，跳转去清空
     }
 
 out_truncate:

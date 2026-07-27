@@ -506,12 +506,7 @@ pub fn run() -> Result<()> {
     log::info!("command: {:?}", cli.command);
 
     let result = match cli.command {
-        Commands::PostFsData => {
-            let _ = crate::ksucalls::set_feature(4 as u32, 1)
-                .with_context(|| format!("Failed to set feature selinux_hide"));
-            init_event::on_post_data_fs();
-            Ok(())
-        }
+        Commands::PostFsData => init_event::on_post_data_fs(),
         Commands::BootCompleted => {
             init_event::on_boot_completed();
             Ok(())

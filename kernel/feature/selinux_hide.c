@@ -30,7 +30,7 @@
 #include "hook/lsm_hook.h"
 
 static DEFINE_MUTEX(selinux_hide_mutex);
-static bool ksu_selinux_hide_enabled __read_mostly = false;
+static bool ksu_selinux_hide_enabled __read_mostly = true;
 static bool ksu_selinux_hide_running __read_mostly = false;
 
 enum sel_inos {
@@ -489,6 +489,17 @@ void __init ksu_selinux_hide_init()
     if (ksu_register_feature_handler(&selinux_hide_handler)) {
         pr_err("Failed to register selinux_hide feature handler\n");
     }
+
+    ksu_selinux_hide_enabled = true;
+    if (!ksu_selinux_hide_running) {
+        int ret = ksu_selinux_hide_enable();
+        if (ret) {
+            pr_warn("selinux_hide: default enable failed, ret=%d\n", ret);
+        } else {
+            ksu_selinux_hide_running = true;
+        }
+    }
+
     if (ksu_late_loaded) {
         initialize_fake_status();
     } else {
@@ -516,7 +527,7 @@ void __exit ksu_selinux_hide_exit()
 void ksu_selinux_hide_drop_backup_if_unused()
 {
     mutex_lock(&selinux_hide_mutex);
-    if (!ksu_selinux_hide_running && backup_sepolicy) {
+    if (!ksu_selinux_hide_enabled && !ksu_selinux_hide_running && backup_sepolicy) {
         pr_info("selinux_hide is not enabled - drop backup_sepolicy\n");
         sidtab_destroy(backup_sepolicy->sidtab);
         kfree(backup_sepolicy->sidtab);

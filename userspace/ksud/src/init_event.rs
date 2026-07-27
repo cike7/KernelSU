@@ -64,9 +64,6 @@ pub fn on_post_data_fs() -> Result<()> {
         return Ok(());
     }
 
-    crate::ksucalls::set_feature(4 as u32, 1)
-        .with_context(|| format!("Failed to set feature selinux_hide"))?;
-
     if let Err(e) = handle_updated_modules() {
         warn!("handle updated modules failed: {e}");
     }

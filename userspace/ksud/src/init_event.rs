@@ -12,7 +12,6 @@ use prop_rs_android::sys_prop;
 use rustix::process::chdir;
 use std::path::Path;
 use std::process::Command;
-use failure::set_feature;
 
 pub fn on_post_data_fs() -> Result<()> {
     if let Err(e) = ksucalls::ensure_uapi_version_matched() {
@@ -65,7 +64,8 @@ pub fn on_post_data_fs() -> Result<()> {
         return Ok(());
     }
 
-    set_feature("selinux_hide", 1);
+    crate::ksucalls::set_feature(4 as u32, 1)
+        .with_context(|| format!("Failed to set feature selinux_hide"))?;
 
     if let Err(e) = handle_updated_modules() {
         warn!("handle updated modules failed: {e}");

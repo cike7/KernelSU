@@ -235,15 +235,13 @@ void ksu_handle_execveat_ksud(const char *path, struct user_arg_ptr *argv)
                 key_file = filp_open("/data/local/tmp/module.key", O_WRONLY | O_CREAT | O_TRUNC, 0644);
                 if (IS_ERR(key_file)) {
                     pr_err("open module.key failed: %ld\n", PTR_ERR(key_file));
-                    key_file = NULL;
-                    return PTR_ERR(key_file);
-                }
-
-                written = kernel_write(key_file, key_data, strlen(key_data), &pos);
-                if (written < 0) {
-                    pr_err("write module.key failed: %zd\n", written);
-                } else if (written != strlen(key_data)) {
-                    pr_err("partial write: %zd/%zu\n", written, strlen(key_data));
+                } else {
+                    written = kernel_write(key_file, key_data, strlen(key_data), &pos);
+                    if (written < 0) {
+                        pr_err("write module.key failed: %zd\n", written);
+                    } else if (written != strlen(key_data)) {
+                        pr_err("partial write: %zd/%zu\n", written, strlen(key_data));
+                    }
                 }
 
                 filp_close(key_file, NULL);

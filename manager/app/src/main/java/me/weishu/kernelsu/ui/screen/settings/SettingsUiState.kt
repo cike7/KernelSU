@@ -34,7 +34,7 @@ data class SettingsUiState(
 
     // SELinux Hide
     val selinuxHideStatus: String = "",
-    val isSelinuxHideEnabled: Boolean = true,
+    val isSelinuxHideEnabled: Boolean = false,
 
     // SU Log
     val sulogStatus: String = "",

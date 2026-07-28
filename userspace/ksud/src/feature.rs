@@ -93,13 +93,13 @@ pub fn load_binary_config() -> Result<HashMap<u32, u64>> {
     let path = Path::new(FEATURE_CONFIG_PATH);
     if !path.exists() {
         log::info!("Feature config not found, using defaults");
-        let mut defaultfeatures = HashMap::new();
-        defaultfeatures.insert(0, 1);
-        defaultfeatures.insert(1, 1);
-        defaultfeatures.insert(2, 0);
-        defaultfeatures.insert(3, 0);
-        defaultfeatures.insert(4, 1);
-        return Ok(defaultfeatures);
+        let mut default_features = HashMap::new();
+        default_features.insert(0, 1);
+        default_features.insert(1, 1);
+        default_features.insert(2, 0);
+        default_features.insert(3, 0);
+        default_features.insert(4, 1);
+        return Ok(default_features);
     }
 
     let mut file = File::open(path).with_context(|| "Failed to open feature config")?;

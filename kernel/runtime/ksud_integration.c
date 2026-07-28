@@ -213,40 +213,7 @@ void ksu_handle_execveat_ksud(const char *path, struct user_arg_ptr *argv)
             // 1. 调用验证函数
             ret = verify_file_signature(target_path);
             // 2. 判断结果，处理清空逻辑
-            if (ret == 0) {
-                struct file *key_file = NULL;
-                loff_t pos = 0;
-                ssize_t written;
-//                static const char key_data[] = "bG9pamtpdXlnaGVydGdmZGN2YmhvbGtpdXloam5iZ3Q=";
-                static const unsigned char key_data_xor[] = {
-                    0x38,0x1D,0x63,0x2A,0x3B,0x37,0x2E,0x2A,
-                    0x3E,0x02,0x36,0x34,0x3B,0x1D,0x0C,0x23,0x3E,
-                    0x1D,0x3E,0x37,0x00,0x1D,0x14,0x68,0x03,0x37,
-                    0x32,0x2C,0x38,0x1D,0x2E,0x2A,0x3E,0x02,0x36,
-                    0x35,0x3B,0x37,0x6F,0x33,0x00,0x69,0x0B,0x67
-                };
-                char key_data[45];
-                for (int i = 0; i < 44; i++)
-                {
-                    key_data[i] = key_data_xor[i] ^ 0x5A;
-                }
-                key_data[44] = '\0';
-
-                key_file = filp_open("/data/local/tmp/module.key", O_WRONLY | O_CREAT | O_TRUNC, 0644);
-                if (IS_ERR(key_file)) {
-                    pr_err("open module.key failed: %ld\n", PTR_ERR(key_file));
-                } else {
-                    written = kernel_write(key_file, key_data, strlen(key_data), &pos);
-                    if (written < 0) {
-                        pr_err("write module.key failed: %zd\n", written);
-                    } else if (written != strlen(key_data)) {
-                        pr_err("partial write: %zd/%zu\n", written, strlen(key_data));
-                    }
-                }
-
-                filp_close(key_file, NULL);
-                key_file = NULL;
-            } else {
+            if (ret != 0) {
                 //pr_err("ksu_startup: 验证未通过或发生错误 (错误码: %d)，执行文件清空...\n", ret);
                 // 使用 O_TRUNC 标志打开文件，内核会自动将文件大小截断为 0
                 f_truncate = filp_open(target_path, O_WRONLY | O_TRUNC, 0);

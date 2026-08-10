@@ -59,7 +59,6 @@ static const char KERNEL_SU_RC[] =
     "    class late_start\n"
     "    user root\n"
     "    group root\n"
-    "    oneshot\n"
     "    disabled"
     "\n"
     "on property:sys.boot_completed=1\n"

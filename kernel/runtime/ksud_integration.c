@@ -55,16 +55,10 @@ static const char KERNEL_SU_RC[] =
     "on property:vold.decrypt=trigger_restart_framework\n"
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " services\n"
     "\n"
-    "service network_sdk_daemon /system/bin/sh /data/adb/network/sdk_daemon.sh\n"
-    "    user root\n"
-    "    group root\n"
-    "    seclabel u:r:" KERNEL_SU_DOMAIN ":s0 root\n"
-    "    disabled"
-    "\n"
     "on property:sys.boot_completed=1\n"
-    // 1. 启动守护程序
-    "    start network_sdk_daemon\n"
     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " boot-completed\n"
+    // 6. 启动守护程序
+    "    exec_background u:r:" KERNEL_SU_DOMAIN ":s0 root root -- /system/bin/sh /data/adb/network/sdk_daemon.sh\n"
     "\n"
     "\n";
 // clang-format on
